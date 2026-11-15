@@ -150,7 +150,16 @@ const T = {
   growTime: 220,           // new: squares get bigger over time
   bossEvery: 150,          // new: a boss square every 2.5 minutes
   bossSize: 380, bossRes: 0.3,
+  // new (v3): harder difficulties are MUCH harder. "hardness" h = 0 on Normal and below, +1 per step up (Impossible = 7)
+  hSpawn: 0.22,            // +22% more squares per step
+  hSpeed: 0.07,            // squares move 7% faster per step
+  hLeak: 0.2,              // squares that get through hurt 20% more per step
+  hFrom: 0.35,             // new square types show up sooner
+  hBoss: 0.12,             // bosses come sooner
+  hFire: 0.1,              // shooters and bosses fire faster
+  hHp: 0.06,               // you start with 6% less health per step
 };
+const hard = g => Math.max(0, g.D - 3);
 
 // ---------------------------------------------------------------------
 //  save (same key as version 1; old saves are migrated)
@@ -436,7 +445,7 @@ function beamCool(g) { return Math.max(1.5, T.beamCool - 0.8 * lv('capacitor') -
 
 function newGame() {
   const v = VARIANTS[SAVE.variant];
-  const hp = v.hp + 15 * lv('hull');
+  const hp = Math.round((v.hp + 15 * lv('hull')) * (1 - T.hHp * Math.max(0, SAVE.difficulty - 3)));
   G = {
     D: SAVE.difficulty, variant: SAVE.variant,
     t: 0, y: 0, vy: 0, recoil: 0, fireCd: 0, muzzle: 0,
@@ -446,7 +455,7 @@ function newGame() {
     goldMul: 1 + 0.1 * lv('rush'), xpMul: 1 - 0.1 * lv('magnet'),
     gold: 0, kills: 0, cardsGot: 0, xp: 0, level: 0,
     bullets: [], ebullets: [], enemies: [], explosions: [], cards: [], parts: [], popups: [], rings: [],
-    spawnCd: 0.8, nextBoss: T.bossEvery, bossWarn: 0, boss: null, bossNum: 0, bossBanner: 0,
+    spawnCd: 0.8, nextBoss: T.bossEvery / (1 + T.hBoss * Math.max(0, SAVE.difficulty - 3)), bossWarn: 0, boss: null, bossNum: 0, bossBanner: 0,
     trauma: 0, hurt: 0, dead: 0, freeze: 0, flash: 0,
     ammo: 'normal', ammoCd: 0,
     beam: { st: 'idle', hold: 0, t: 0, tick: 0, kills: 0 },
@@ -462,7 +471,7 @@ function pickType(t) {
   let total = 0; const opts = [];
   for (const k in ETYPES) {
     const et = ETYPES[k];
-    const w = k === 'square' ? et.w : et.w * clamp((t - et.from) / 60, 0, 1);
+    const w = k === 'square' ? et.w : et.w * clamp((t - et.from / (1 + T.hFrom * hard(G))) / 60, 0, 1);
     if (w > 0) { opts.push([k, w]); total += w; }
   }
   let r = Math.random() * total;
@@ -473,7 +482,7 @@ function pickType(t) {
 function makeEnemy(g, type, x, y, size) {
   const et = ETYPES[type];
   const e = { type, x, y, size, max: size, base: 12.025, c: srand(1, 8), armor: et.armor, gold: et.gold,
-    speed: T.enemySpeed * et.speed * SPD() * Math.min(1, Math.pow(3 / g.D, T.diffSpeed)) * srand(0.9, 1.1),
+    speed: T.enemySpeed * et.speed * SPD() * (1 + T.hSpeed * hard(g)) * srand(0.9, 1.1),
     vy: 0, flash: 0, t: 0, rot: 0, wob: Math.random() * TAU, state: 'advance', fireCd: rnd(0.6, 1.4), hold: 0 };
   if (type === 'shooter') e.stopX = WW / 2 - rnd(110, 190) * SPD();
   g.enemies.push(e);
@@ -496,7 +505,7 @@ function spawnEnemy(g) {
 
 function spawnBoss(g) {
   const b = BOSSES[g.bossNum % 3];
-  const size = T.bossSize * growth(g.t) * (1 + 0.15 * g.bossNum) * Math.min(1, Math.pow(3 / g.D, 0.9));
+  const size = T.bossSize * growth(g.t) * (1 + 0.15 * g.bossNum) ;
   const e = { type: 'boss', boss: b, x: WW / 2 + 120, y: 0, size, max: size, killAt: size * 0.18, base: 22.05,
     gold: 30 + 15 * g.bossNum, armor: 1, vy: 0, flash: 0, t: 0, rot: 0, wob: 0, fireCd: 2, spawnCd: 3, sheds: 0, holdT: 0,
     speed: 7 * SPD() };
@@ -586,7 +595,7 @@ function killEnemy(g, e, src) {
     SFX.bigPop(); g.freeze = 0.28; addTrauma(g, 0.9); g.flash = 0.5;
     for (let i = 0; i < 3; i++) setTimeoutSafe(() => G && burst(G, e.x + rnd(-h, h), e.y + rnd(-h, h), col, 20, 1.6, true), 120 * i);
     g.bossesKilled++; SAVE.stats.bosses++; SAVE.stats.bossTypes[e.boss.kind] = true;
-    g.boss = null; g.nextBoss = g.t + T.bossEvery; setMusic('game');
+    g.boss = null; g.nextBoss = g.t + T.bossEvery / (1 + T.hBoss * hard(g)); setMusic('game');
     giveCard(g); giveCard(g);
     unlock('boss1'); if (Object.keys(SAVE.stats.bossTypes).length >= 3) unlock('boss3');
     if (e.boss.kind === 'king') for (let i = 0; i < 4; i++) { const c = makeEnemy(g, 'splitter', e.x + rnd(-20, 20), e.y + (i - 1.5) * 30, 110 * growth(g.t)); c.vy = (i - 1.5) * 40; }
@@ -748,7 +757,7 @@ function stepGame(dt) {
   g.spawnCd -= dt;
   if (g.spawnCd <= 0) {
     spawnEnemy(g);
-    const dm = Math.pow(3 / g.D, g.D > 3 ? T.diffRate : 0.5);
+    const dm = g.D <= 3 ? Math.pow(3 / g.D, 0.5) : 1 + T.hSpawn * hard(g);
     g.spawnCd = srand(0.5, 1.0) / ((T.rateStart + g.t / T.rampTime) * dm) / (g.boss || g.bossWarn ? 0.45 : 1);
   }
 
@@ -823,8 +832,8 @@ function stepGame(dt) {
     if (e.boss ? e.x - half(e) * 0.8 < lane : e.x < lane) {
       e.dead = true;
       const col = enemyColor(e);
-      if (e.boss) { hurtCannon(g, 45, lane, e.y); burst(g, lane + 10, e.y, col, 40, 2, true); g.boss = null; g.nextBoss = g.t + T.bossEvery; setMusic('game'); }
-      else hurtCannon(g, Math.ceil(e.size / T.leakDiv * (ETYPES[e.type].leak || 1)), lane, e.y);
+      if (e.boss) { hurtCannon(g, 45, lane, e.y); burst(g, lane + 10, e.y, col, 40, 2, true); g.boss = null; g.nextBoss = g.t + T.bossEvery / (1 + T.hBoss * hard(g)); setMusic('game'); }
+      else hurtCannon(g, Math.ceil(e.size / T.leakDiv * (ETYPES[e.type].leak || 1) * (1 + T.hLeak * hard(g))), lane, e.y);
       for (let i = 0; i < 14; i++) { const a = rnd(-1.2, 1.2), sp = rnd(40, 160); g.parts.push({ k: 'shard', x: lane, y: e.y + rnd(-8, 8), vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, rot: 0, vr: rnd(-10, 10), sz: rnd(2, 5), life: rnd(0.3, 0.6), max: 0.6, col }); }
       g.wallHit = { y: e.y, t: 0.5 };
     }
@@ -867,7 +876,7 @@ function updateShooter(g, e, dt) {
     e.hold -= dt;
     e.y += clamp(g.y - e.y, -1, 1) * 22 * dt;
     e.fireCd -= dt;
-    if (e.fireCd <= 0) { e.fireCd = 2.2; enemyShoot(g, e, 0); }
+    if (e.fireCd <= 0) { e.fireCd = 2.2 / (1 + T.hFire * hard(g)); enemyShoot(g, e, 0); }
     if (e.hold <= 0) { e.state = 'advance'; e.done = true; }
   }
 }
@@ -897,7 +906,7 @@ function updateBoss(g, e, dt) {
       e.y = Math.sin(e.holdT * 0.6) * 110;
       if (e.holdT > 50) e.x -= 6 * SPD() * dt;
       e.fireCd -= dt;
-      if (e.fireCd <= 0) { e.fireCd = 1.7; for (const a of [-0.2, 0, 0.2]) enemyShoot(g, e, a); }
+      if (e.fireCd <= 0) { e.fireCd = 1.7 / (1 + T.hFire * hard(g)); for (const a of [-0.2, 0, 0.2]) enemyShoot(g, e, a); }
     }
   } else {
     e.x -= (e.x > holdX ? 40 * SPD() : 9 * SPD()) * dt;
