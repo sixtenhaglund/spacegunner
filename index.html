@@ -1,0 +1,865 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SpaceGunner</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; outline: none; }
+</style>
+</head>
+<body>
+<canvas id="c" tabindex="0"></canvas>
+<script>
+'use strict';
+/* =====================================================================
+   SpaceGunner (UPGRADES) - remake of Sixten's Scratch game
+   Stage is the Scratch stage: 480 x 360, x right, y UP, (0,0) = center.
+   Everything below uses Scratch coordinates; draw() converts.
+   ===================================================================== */
+
+// ---------- costumes: [file, rotationCenterX, rotationCenterY, width, height] ----------
+const A = 'assets/';
+const COST = {
+  bgTitle:  ['05e1e97a972c9bd5dbd3dae62b39c332.svg', 242.18, 190.3, 484.36, 370.3],   // Stage backdrop2
+  bgGame:   ['e2fa7b9573fae8259aa50f9b2d0211c3.svg', 277.5, 228, 555, 474],          // Stage backdrop1
+  enemy1: ['f7910cf267a0261c9cc149b72d5bc48d.svg', 12.025, 12.025, 24.05, 24.05],     // Sprite2 (the squares)
+  enemy2: ['5879b52dc23f446d1ee3e0966c4337e4.svg', 12.025, 12.025, 24.05, 24.05],
+  enemy3: ['684f1a47413b0f902081180bfb6dd531.svg', 12.025, 12.025, 24.05, 24.05],
+  enemy4: ['5e56ec079e4a4f1784c17333eb00cdd7.svg', 12.025, 12.025, 24.05, 24.05],
+  enemy5: ['e9d320cad59e743b2c369093353ce64d.svg', 12.025, 12.025, 24.05, 24.05],
+  enemy6: ['4d8b190bd6e3f6b2a1d34a0446cfa1b2.svg', 12.025, 12.025, 24.05, 24.05],
+  enemy7: ['57ca342d4c6861726746048f01edc92d.svg', 12.025, 12.025, 24.05, 24.05],
+  enemy8: ['9c1f5f1d5b1301aff3841a3ae90daa25.svg', 12.025, 12.025, 24.05, 24.05],
+  cannon1: ['6196ef0519de5d749fd8d85714e984ba.svg', 9.23, 10, 39.53, 20],            // Sprite1 (the cannon)
+  cannon2: ['685f206a3bd3636d883938e3c461978d.svg', 9.23, 10, 34.41, 20],
+  cannon3: ['64bb14278e89f942bb1cbaad8c1b5c3f.svg', 9.23, 11.52, 41.32, 23.04],
+  cannon4: ['c9e5993160c275e558dd1cd9c49ab7f0.svg', 9.23, 11.52, 34.75, 23.04],
+  cannon5: ['b3d15fe26d16438af740c6c3f1e60ce9.svg', 9.23, 13.41, 41.32, 26.53],
+  cannon6: ['235c3fc9d45d37255af36c8c1c62af24.svg', 9.23, 13.41, 35.82, 26.53],
+  cannon7: ['7ae34cb32c3a72992952af0fede56f3f.svg', 9.23, 17.34, 58.84, 34.75],
+  cannon8: ['026a7ca38d4d926adbb4714df6d09975.svg', 9.23, 17.34, 50.27, 34.75],
+  bullet:  ['5905ea5f4781ad5790e2dfda3981c0c9.svg', -0.32, 7.13, 40.07, 14.25],       // Sprite3
+  splash:  ['5f67c4fe1a9ebd3d50755db5a15a5f5d.svg', -6.72, 21.12, 46.06, 42.59],
+  diffBtn: ['de58440e06946b86ce07090c7e8e4cf8.svg', 38.91, 16.79, 77.81, 33.59],      // Sprite4
+  panel:   ['60cbcbaa3b3953a724825edc0885db6e.svg', 251, 191.5, 502, 383],            // Sprite5
+  closeX:  ['b010b1cee0235d0a155c0bc915f1d968.svg', 49.83, 49.83, 99.65, 99.65],      // Sprite6
+  d1:  ['9584c1b1c06ae0f9033fb43d9a633148.svg', 23.54, 7.12, 47.09, 14.09],          // Sprite7..16
+  d2:  ['1f1648fe9ee929e4955943204054d2a5.svg', 23.54, 7.12, 47.09, 14.09],
+  d3:  ['d9d242dab06587c3db94437f418f976d.svg', 23.54, 7.12, 47.09, 14.09],
+  d4:  ['1b635d85a0d82c0b872cd9737fc954b8.svg', 23.54, 7.12, 47.09, 14.09],
+  d5:  ['3df15519a54dd06a978fd46037152a20.svg', 23.54, 7.12, 47.09, 14.09],
+  d6:  ['3fb92d923e470f1dc9f6ce47f54ef1ca.svg', 23.54, 7.12, 47.09, 14.09],
+  d7:  ['206403c8b5583054eafbdf8a24e266e8.svg', 23.54, 7.12, 47.09, 14.09],
+  d8:  ['a6126b1a85c1e0db9e75d506fcfa57e7.svg', 23.54, 7.12, 47.09, 14.09],
+  d9:  ['0ad0f8bfffb24878934fc032afde107d.svg', 23.54, 7.12, 47.09, 14.09],
+  d10: ['7251b83d6fbc32f8b89b18084077f0f3.svg', 23.54, 7.12, 47.09, 14.09],
+  titleGun: ['cbbe524ee1fcf9e1d9380ba2362c9a16.svg', 12.01, 12.01, 52.41, 24.01],    // Sprite17
+  playBtn:  ['e91484b1d588d9f5890cbb738f47573c.svg', 25.41, 16.79, 50.81, 33.59],    // Sprite18
+  card1: ['3b9667200b217407dc5562ca3a0c884f.svg', 10, 12.08, 20, 24.17],             // Sprite19
+  card2: ['ae15a5116776c3527b8e04ff76617f68.svg', 10, 12.08, 20, 24.17],
+  card3: ['18fd24a368d0d66212d55df9977330c2.svg', 10, 12.08, 20, 24.17],
+  card4: ['148e0b3a592136aa69e4a74f79eca171.svg', 10, 12.08, 20, 24.17],
+  // from SpaceShooter (COLOR UPDATE): the MEGA BEAM and the gun it fires from
+  beam:    ['4a5dc50b595bf2ff2cd84b5050df7825.svg', -30.74, 132.29, 328.52, 267.08],
+  beamGun: ['b17e74696c4d7bb8408d82c96a9efd50.svg', 23.68, 23.86, 58.7, 47.81],
+};
+const ENEMY_COLORS = ['#fff100', '#ff9300', '#ff0000', '#35ff00', '#00e4ff', '#0016ff', '#8000ff', '#ef00ff'];
+
+const DIFFS = [null, 'Baby mode', 'Easy', 'Normal', 'Medium', 'Difficult', 'Hard', 'Brutal', 'Extreme', 'Unbeatable', 'Impossible'];
+
+// CannonVariant. 1 and 2 are from his code (move 2 / move 1, variant 2 waits 4x as long between shots).
+// 3 and 4 had costumes but empty code, so they got simple jobs that match their looks.
+const VARIANTS = [null,
+  { name: 'Gunner', move: 2,   fire: 1,   dmg: 1,   shots: 1, hp: 100, xp: 0,   bullet: 1,   desc: 'The classic. Quick on the rail.' },
+  { name: 'Heavy',  move: 1,   fire: 4,   dmg: 5,   shots: 1, hp: 150, xp: 600, bullet: 1.5, splash: true, desc: 'Slow. Huge exploding shells. +50 health.' },
+  { name: 'Scout',  move: 3.5, fire: 0.6, dmg: 0.6, shots: 1, hp: 80,  xp: 2000, bullet: 0.8, desc: 'Super fast rail, rapid weak shots.' },
+  { name: 'Triple', move: 1.5, fire: 1.4, dmg: 0.7, shots: 3, hp: 100, xp: 5000, bullet: 1,   desc: 'Three barrels, three bullets in a spread.' },
+];
+
+const CARD_NAMES = [null, '+1 ATTACK SPEED', '+1 ATTACK DAMAGE', '+10 HEALTH', '+SPLASH DAMAGE'];
+
+// ---------- tuning (numbers from the Scratch code unless noted) ----------
+const T = {
+  cannonX: -230,
+  bulletSpeed: 300,        // 10 steps per Scratch frame (30 fps)
+  enemySpeed: 30,          // 2 steps then wait 0..0.1 s  ~ 1 step per frame
+  enemyX: 210,
+  lane: -222,              // enemy center past this = it crashed into your wall (new: original had no losing)
+  beamDmg: 0.5,   // new: beam hits every Scratch frame for half a bullet hit (SpaceShooter: instant kill)
+  beamHold: 1, beamCharge: 1, beamFire: 1, beamCool: 5,   // SpaceShooter's MEGA BEAM timings
+  xpBase: 3, xpStep: 1,   // new: kills per upgrade card = xpBase + level * xpStep
+  leakDiv: 15,   // new: a square that reaches your wall does size/15 damage
+  minSpeed: 0.1,   // new: AttackSpeed stops at 0.1 s (in Scratch it reached 0 = a bullet every frame)
+  rateStart: 0.25,   // new: spawning starts gentler than his 0.5..1 s and speeds up past it
+  diffRate: 1.5,   // new: higher difficulty = fewer squares (each one is much tougher there)
+  diffSpeed: 0.6,   // new: on hard difficulties the (much tougher) squares crawl slower, or nobody could ever kill one in time
+  rampTime: 120,   // new: spawning speeds up over time so a run ends (+1x spawn rate every 120 s)
+  growTime: 220,      // new: squares get bigger over time (+100% size after this many seconds, faster after that)
+};
+
+// ---------- Scratch-style random ----------
+function srand(a, b) {
+  const lo = Math.min(a, b), hi = Math.max(a, b);
+  if (Number.isInteger(a) && Number.isInteger(b)) return lo + Math.floor(Math.random() * (hi - lo + 1));
+  return lo + Math.random() * (hi - lo);
+}
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+
+// ---------- save ----------
+const SAVE_KEY = 'spacegunner_save_v1';
+let SAVE = { difficulty: 3, variant: 1, credits: 0, best: {}, sound: true };
+function loadSave() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+    if (s && typeof s === 'object') SAVE = Object.assign(SAVE, s);
+  } catch (e) {}
+  SAVE.difficulty = clamp(SAVE.difficulty | 0 || 3, 1, 10);
+  SAVE.variant = clamp(SAVE.variant | 0 || 1, 1, 4);
+  if (!variantUnlocked(SAVE.variant)) SAVE.variant = 1;
+}
+function writeSave() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(SAVE)); } catch (e) {} }
+function variantUnlocked(v) { return SAVE.credits >= VARIANTS[v].xp; }
+
+// ---------- sound: his "pop", pitched for each job ----------
+const POP_B64 = 'UklGRigCAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQQCAADVAAMDvQdyDe8VUx08I5sk4iCrFnMGVfFf2mDEjbNpqZKo5bFHxUHh8wLtJtFHSmF9byNwCmHOROodKvMPyWqn/ZElje6YObXo3eIMnTpEYHB2tXmiaNhFZxdK5Gy1epLegWuGcZ+OyCH84jB9Xd955H83calNthyp50+4jJYDiWmRT6712VwMADxQX+9vF2lWTgokcfJZxWejtpN4mfiyaNqjCY42a1cpZqJfvEb1H8jyA8r1rc6iH6syxPHqwBSrOShR8VY0SU4rAwQs27667KgOqdG8jN28BjwugEsUWSdSXTmsExzqccWtrSmnurMb0LD2pR56P8hRylFrP30f5/nT1oG+H7ZVvqzVvPUqGIIz9UGEQCwvDBNX8p/Vs8P1v3TLnON6AnogiTaGP9I4OiTDBpLnG86GvwjAFc9R6WsIfiUgOghBtTiWI1MGL+hWzyrC6sJa0QXqSQeUItc10DzsNUojWglH7hvYd8sNy2bWb+qxApIZMyp4MKorPB30CGTzv+G41/bWrN8Q780BKRNcH6gjSB+rE68DUvNw5rrf2+Az6cz2JAbbE/IcSh+EGskPfAHk8jXnDeGG4XroZ/ShAiwQXxoQH4wdXhY9C3T+5/LK6pbnhOng7/n41AIIC0oQkhHZDjcJGQJ5+532lvTd9df5H/+OBJcIFwqKCFUEYf4=';
+let actx = null, popBuf = null, lastPop = {};
+function initAudio() {
+  if (actx || typeof AudioContext === 'undefined' && typeof webkitAudioContext === 'undefined') return;
+  try {
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+    const bin = atob(POP_B64), arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    actx.decodeAudioData(arr.buffer, b => { popBuf = b; }, () => {});
+  } catch (e) { actx = null; }
+}
+function pop(rate = 1, vol = 0.5, tag = '', minGap = 0) {
+  if (!actx || !popBuf || !SAVE.sound) return;
+  const now = actx.currentTime;
+  if (tag && lastPop[tag] && now - lastPop[tag] < minGap) return;
+  if (tag) lastPop[tag] = now;
+  try {
+    const src = actx.createBufferSource(), g = actx.createGain();
+    src.buffer = popBuf; src.playbackRate.value = rate; g.gain.value = vol;
+    src.connect(g); g.connect(actx.destination); src.start();
+  } catch (e) {}
+}
+
+// ---------- input ----------
+const keys = {};
+const mouse = { x: 0, y: 0, down: false };
+function key(k) { return !!keys[k]; }
+
+// ---------- state ----------
+let scene = 'title';      // title | play | over
+let paused = false;
+let showDifficulty = false;
+let G = null;
+const ui = { sizes: {}, gunDir: 90, t: 0 };
+let stars = [];
+
+function makeStars() {
+  stars = [];
+  for (let i = 0; i < 70; i++) stars.push({ x: srand(-240, 240.0), y: srand(-180, 180.0), z: Math.random() });
+}
+
+function newGame() {
+  const v = VARIANTS[SAVE.variant];
+  G = {
+    D: SAVE.difficulty, variant: SAVE.variant,
+    t: 0, y: 0, recoil: 0, fireCd: 0,
+    health: v.hp, startHealth: v.hp,
+    attackSpeed: 0.5, attackDamage: 0, splash: 0,  // AttackDamage counts DOWN in his code (-1 per card); stored as positive bonus here
+    gold: 0, kills: 0, cardsGot: 0, xp: 0, level: 0, biggest: 0,
+    bullets: [], enemies: [], explosions: [], cards: [], parts: [], popups: [],
+    spawnCd: 0.6, shake: 0, hurt: 0, dead: 0,
+    beam: { st: 'idle', hold: 0, t: 0, tick: 0 },
+  };
+  scene = 'play'; paused = false; showDifficulty = false;
+}
+
+// kill size (%) and damage per hit, straight from Sprite2's script
+function killSize(D) { return 50 - D * 2; }
+function hitDamage(g) { return (30 / g.D + g.attackDamage) * VARIANTS[g.variant].dmg; }
+function enemyHalf(e) { return 12.025 * e.size / 100; }
+
+function spawnEnemy(g) {
+  const D = g.D;
+  let size = 100 + srand(-10, 50);
+  if (T.growTime) size *= 1 + (g.t / T.growTime) ** 2;
+  if (srand(D * 2, 100) === 100) {
+    size += srand(50, 300);
+    if (srand(D * 5, 150) === 150) {
+      size += srand(200, 700);
+      if (srand(D * 10, 200) === 200) size += srand(500, 2000);
+    }
+  }
+  const c = srand(1, 8);
+  g.enemies.push({ x: T.enemyX, y: srand(-165, 165.0), size, max: size, c, speed: T.enemySpeed * Math.min(1, Math.pow(3 / D, T.diffSpeed)) * srand(0.9, 1.1), flash: 0, wob: Math.random() * 6 });
+}
+
+function fire(g) {
+  const v = VARIANTS[g.variant];
+  const spread = v.shots === 3 ? [-7, 0, 7] : [0];
+  for (const a of spread) {
+    const r = a * Math.PI / 180;
+    g.bullets.push({ x: T.cannonX, y: g.y + (v.shots === 3 ? a * 0.6 : 0), vx: Math.cos(r) * T.bulletSpeed, vy: Math.sin(r) * T.bulletSpeed, size: srand(45, 55) * v.bullet, dir: 90 - a });
+  }
+  pop(1.7 + Math.random() * 0.2, 0.18, 'shot', 0.045);
+}
+
+function hurtEnemy(g, e, dmg) {
+  if (e.dead) return;
+  e.size -= dmg;
+  e.flash = 0.07;
+  if (e.size < killSize(g.D)) killEnemy(g, e);
+}
+
+function killEnemy(g, e) {
+  e.dead = true;
+  g.kills++; g.gold++;
+  g.biggest = Math.max(g.biggest, e.max);
+  const col = ENEMY_COLORS[e.c - 1];
+  const n = Math.min(26, 8 + (e.max / 25) | 0);
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, s = srand(40, 160.0) * (0.6 + e.max / 400);
+    g.parts.push({ x: e.x, y: e.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: srand(0.3, 0.7), max: 0.7, col, sz: srand(2, 5) });
+  }
+  g.popups.push({ x: e.x, y: e.y + 8, text: '+1', t: 0.8, col: '#ffd43b' });
+  pop(0.75 + Math.random() * 0.15, 0.5, 'kill', 0.03);
+  // Sprite19: "Upgrade" broadcast. His version gave a card 1 in 3 kills, which snowballs forever,
+  // so kills now fill an Experience bar and every full bar = one upgrade card (bar grows each level).
+  g.xp++;
+  if (g.xp >= xpNeed(g)) { g.xp -= xpNeed(g); g.level++; giveCard(g); }
+}
+
+function xpNeed(g) { return T.xpBase + g.level * T.xpStep; }
+
+function giveCard(g) {
+  const pool = [1, 2, 3, 4].filter(t => !(t === 1 && g.attackSpeed <= T.minSpeed + 0.001) && !(t === 4 && (g.splash > 0 || VARIANTS[g.variant].splash)));
+  const type = pool[srand(0, pool.length - 1)];
+  // effects copied from Sprite19's clone script
+  if (type === 1) g.attackSpeed = Math.max(T.minSpeed, Math.round((g.attackSpeed - 0.1) * 10) / 10);
+  if (type === 2) g.attackDamage += 1;
+  if (type === 3) g.health += 10;
+  if (type === 4) g.splash = 1;
+  g.cardsGot++;
+  g.cards.push({ type, x: srand(-200, 200.0), y: srand(-130, 130.0), t: 0 });
+  pop(2.1, 0.45);
+  setTimeout(() => pop(2.6, 0.35), 70);
+}
+
+function beamHits(g, e) {
+  // the beam costume is a wedge: starts 30 px in front of the cannon (30 px tall), ends 359 px out (267 px tall)
+  const dx = e.x - T.cannonX, dy = e.y - g.y, h = enemyHalf(e);
+  if (dx + h < 30.74 || dx - h > 359.26) return false;
+  const k = (clamp(dx, 30.74, 359.26) - 30.74) / 328.52;
+  const half = 15 + k * 118.5;
+  return Math.abs(dy) <= half + h;
+}
+
+function stepGame(dt) {
+  const g = G;
+  if (g.dead) {
+    g.dead += dt;
+    stepFx(g, dt);
+    if (g.dead > 1.6 && scene === 'play') scene = 'over';
+    return;
+  }
+  g.t += dt;
+  const v = VARIANTS[g.variant];
+
+  // --- Sprite1: move up/down (w/a up, s/d down - his keys, plus arrows) ---
+  const up = key('w') || key('a') || key('arrowup');
+  const down = key('s') || key('d') || key('arrowdown');
+  if (up) g.y += v.move * 30 * dt;
+  if (down) g.y -= v.move * 30 * dt;
+  g.y = clamp(g.y, -168, 168);
+
+  // --- Sprite3: hold E to shoot (space works too) ---
+  g.fireCd -= dt;
+  g.recoil -= dt;
+  if ((key('e') || key(' ')) && g.fireCd <= 0) {
+    fire(g);
+    const period = Math.max(1 / 30, g.attackSpeed * v.fire);
+    g.fireCd = period;
+    g.recoil = Math.min(0.15, period / 2);
+  }
+
+  // --- MEGA BEAM (SpaceShooter): hold R 1 s -> charge 1 s -> beam 1 s -> 5 s cooldown ---
+  const b = g.beam;
+  if (b.st === 'idle') {
+    if (key('r')) { b.hold += dt; if (b.hold >= T.beamHold) { b.st = 'charge'; b.t = T.beamCharge; b.tick = 0; } }
+    else b.hold = 0;
+  } else if (b.st === 'charge') {
+    b.t -= dt; b.tick -= dt;
+    if (b.tick <= 0) { pop(1 + (1 - b.t) * 1.6, 0.3); b.tick = 0.1; }
+    if (b.t <= 0) { b.st = 'fire'; b.t = T.beamFire; b.tick = 0; g.shake = Math.max(g.shake, 0.25); pop(0.5, 0.8); }
+  } else if (b.st === 'fire') {
+    b.t -= dt; b.tick -= dt;
+    if (b.tick <= 0) {
+      b.tick += 1 / 30;     // Scratch checks "touching" once per frame (30 fps)
+      const dmg = hitDamage(g) * T.beamDmg;
+      for (const e of g.enemies) if (!e.dead && beamHits(g, e)) hurtEnemy(g, e, dmg);
+    }
+    if (b.t <= 0) { b.st = 'cool'; b.t = T.beamCool; }
+  } else if (b.st === 'cool') {
+    b.t -= dt;
+    if (b.t <= 0) { b.st = 'idle'; b.hold = 0; }
+  }
+
+  // --- Sprite2 spawner: a new square every 0.5..1 s (faster over time - new) ---
+  g.spawnCd -= dt;
+  if (g.spawnCd <= 0) {
+    spawnEnemy(g);
+    g.spawnCd = srand(0.5, 1.0) / ((T.rateStart + g.t / T.rampTime) * Math.pow(3 / g.D, g.D > 3 ? T.diffRate : 0.5));
+  }
+
+  // --- bullets ---
+  for (const bl of g.bullets) {
+    bl.x += bl.vx * dt; bl.y += bl.vy * dt;
+    if (bl.x > 250 || bl.y > 190 || bl.y < -190) { bl.dead = true; continue; }
+    const s = bl.size / 100;
+    const x0 = bl.x + 4 * s, x1 = bl.x + 38 * s, hh = 5 * s;
+    let hit = null;
+    for (const e of g.enemies) {
+      if (e.dead) continue;
+      const h = enemyHalf(e);
+      if (x1 >= e.x - h && x0 <= e.x + h && bl.y + hh >= e.y - h && bl.y - hh <= e.y + h) {
+        if (!hit || e.x < hit.x) hit = e;
+      }
+    }
+    if (hit) {
+      bl.dead = true;
+      hurtEnemy(g, hit, hitDamage(g));
+      pop(1.25 + Math.random() * 0.2, 0.22, 'hit', 0.035);
+      if (g.splash > 0 || VARIANTS[g.variant].splash) {
+        // the bullet clone turns into costume2 (splash), grows 1..20 and sits there 0.1 s
+        g.explosions.push({ x: bl.x, y: bl.y, size: bl.size + srand(1, 20), t: 0.1, tick: 0, dir: bl.dir });
+      }
+    }
+  }
+  g.bullets = g.bullets.filter(b2 => !b2.dead);
+
+  // --- splash explosions: hurt everything touching them (once - Scratch hit them every frame for 0.1 s, which made splash 4x damage) ---
+  for (const ex of g.explosions) {
+    ex.t -= dt; ex.tick -= dt;
+    if (ex.tick <= 0 && ex.t > 0) {
+      ex.tick = 1e9;
+      const s = ex.size / 100, cx = ex.x + 29.75 * s, r = 22 * s;
+      for (const e of g.enemies) {
+        if (e.dead) continue;
+        const h = enemyHalf(e);
+        const nx = clamp(cx, e.x - h, e.x + h), ny = clamp(ex.y, e.y - h, e.y + h);
+        if ((nx - cx) ** 2 + (ny - ex.y) ** 2 <= r * r) hurtEnemy(g, e, hitDamage(g));
+      }
+    }
+  }
+  g.explosions = g.explosions.filter(e => e.t > 0);
+
+  // --- squares fly left; if one reaches your wall it hurts the cannon ---
+  for (const e of g.enemies) {
+    if (e.dead) continue;
+    e.x -= e.speed * dt;
+    e.flash -= dt;
+    if (e.x < T.lane) {
+      e.dead = true;
+      const dmg = Math.ceil(e.size / T.leakDiv);
+      g.health -= dmg;
+      g.hurt = 0.35;
+      g.shake = Math.max(g.shake, Math.min(0.5, 0.15 + dmg / 60));
+      g.popups.push({ x: -200, y: e.y, text: '-' + dmg, t: 0.9, col: '#ff4d4d' });
+      const col = ENEMY_COLORS[e.c - 1];
+      for (let i = 0; i < 14; i++) {
+        const a = srand(-1.2, 1.2), s = srand(40, 140.0);
+        g.parts.push({ x: T.lane, y: e.y + srand(-8, 8.0), vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: srand(0.3, 0.6), max: 0.6, col, sz: srand(2, 5) });
+      }
+      pop(0.45, 0.8);
+    }
+  }
+  g.enemies = g.enemies.filter(e => !e.dead);
+
+  if (g.health <= 0) {
+    g.health = 0;
+    g.dead = 0.0001;
+    g.shake = 0.6;
+    for (let i = 0; i < 60; i++) {
+      const a = Math.random() * Math.PI * 2, s = srand(30, 220.0);
+      g.parts.push({ x: T.cannonX, y: g.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: srand(0.5, 1.2), max: 1.2, col: ['#565656', '#ababab', '#00fffa', '#ffffff'][i % 4], sz: srand(2, 6) });
+    }
+    pop(0.35, 1); setTimeout(() => pop(0.3, 1), 120); setTimeout(() => pop(0.25, 1), 260);
+    endRun(g);
+  }
+  stepFx(g, dt);
+}
+
+function stepFx(g, dt) {
+  for (const p of g.parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.96; p.vy *= 0.96; p.life -= dt; }
+  g.parts = g.parts.filter(p => p.life > 0);
+  for (const p of g.popups) { p.y += 22 * dt; p.t -= dt; }
+  g.popups = g.popups.filter(p => p.t > 0);
+  for (const c of g.cards) c.t += dt;
+  g.cards = g.cards.filter(c => c.t < 1.35);
+  g.shake = Math.max(0, g.shake - dt);
+  g.hurt = Math.max(0, g.hurt - dt);
+}
+
+let runResult = null;
+function endRun(g) {
+  const xp = g.gold * g.D;
+  const before = SAVE.credits;
+  const prevBest = SAVE.best[g.D] || 0;
+  SAVE.credits += xp;
+  if (g.gold > prevBest) SAVE.best[g.D] = g.gold;
+  const unlocked = [];
+  for (let v = 2; v <= 4; v++) if (before < VARIANTS[v].xp && SAVE.credits >= VARIANTS[v].xp) unlocked.push(VARIANTS[v].name);
+  writeSave();
+  runResult = { xp, newBest: g.gold > prevBest && g.gold > 0, prevBest, unlocked };
+}
+
+// ---------- title / menus ----------
+function uiSize(id, target, dt) {
+  const s = ui.sizes[id] === undefined ? target : ui.sizes[id];
+  // Scratch: change size by (target - size) / 4 every frame at 30 fps
+  const k = 1 - Math.pow(0.75, dt * 30);
+  return (ui.sizes[id] = s + (target - s) * k);
+}
+function overCostume(key, x, y, size) {
+  const c = COST[key], s = size / 100;
+  const left = x - c[1] * s, top = y + c[2] * s;
+  return mouse.x >= left && mouse.x <= left + c[3] * s && mouse.y <= top && mouse.y >= top - c[4] * s;
+}
+function overRect(x, y, w, h) { return Math.abs(mouse.x - x) <= w / 2 && Math.abs(mouse.y - y) <= h / 2; }
+
+const DIFF_Y = [null, 140, 110, 80, 50, 20, -20, -50, -80, -110, -140];
+const SEL = { lx: -232, rx: -128, y: -100 };   // cannon picker
+const OVER_BTNS = { again: { x: -70, y: -110, w: 110, h: 32, label: 'Play again' }, menu: { x: 70, y: -110, w: 110, h: 32, label: 'Menu' } };
+
+function cycleVariant(dir) {
+  SAVE.variant = ((SAVE.variant - 1 + dir + 4) % 4) + 1;
+  writeSave();
+  pop(1.5, 0.3);
+}
+
+function onClick() {
+  initAudio();
+  if (actx && actx.state === 'suspended') actx.resume();
+  if (scene === 'title') {
+    if (showDifficulty) {
+      if (overCostume('closeX', 195, 130, ui.sizes.closeX || 30)) { showDifficulty = false; pop(1.2, 0.4); return; }
+      for (let d = 1; d <= 10; d++) {
+        if (overCostume('d' + d, -171, DIFF_Y[d], ui.sizes['d' + d] || 200)) { SAVE.difficulty = d; writeSave(); pop(1 + d * 0.06, 0.4); return; }
+      }
+      return;
+    }
+    if (overCostume('playBtn', -193, -40, ui.sizes.play || 100)) { startFromTitle(); return; }
+    if (overCostume('diffBtn', -180, 0, ui.sizes.diff || 100)) { showDifficulty = true; pop(1.2, 0.4); return; }
+    if (overRect(SEL.lx, SEL.y, 22, 26)) { cycleVariant(-1); return; }
+    if (overRect(SEL.rx, SEL.y, 22, 26)) { cycleVariant(1); return; }
+    if (overRect(200, -160, 90, 20)) { SAVE.sound = !SAVE.sound; writeSave(); return; }
+  } else if (scene === 'over') {
+    if (overRect(OVER_BTNS.again.x, OVER_BTNS.again.y, OVER_BTNS.again.w, OVER_BTNS.again.h)) { newGame(); return; }
+    if (overRect(OVER_BTNS.menu.x, OVER_BTNS.menu.y, OVER_BTNS.menu.w, OVER_BTNS.menu.h)) { scene = 'title'; return; }
+  } else if (scene === 'play' && paused) {
+    paused = false;
+  }
+}
+
+function startFromTitle() {
+  if (!variantUnlocked(SAVE.variant)) { pop(0.6, 0.4); ui.lockShake = 0.4; return; }
+  pop(1, 0.5);
+  newGame();
+}
+
+function onKeyDown(k) {
+  initAudio();
+  if (actx && actx.state === 'suspended') actx.resume();
+  if (scene === 'title') {
+    if (showDifficulty) {
+      if (k === 'escape' || k === 'enter') showDifficulty = false;
+      if (k === 'arrowup' || k === 'w') SAVE.difficulty = Math.max(1, SAVE.difficulty - 1), writeSave();
+      if (k === 'arrowdown' || k === 's') SAVE.difficulty = Math.min(10, SAVE.difficulty + 1), writeSave();
+      return;
+    }
+    if (k === 'enter' || k === ' ') startFromTitle();
+    if (k === 'arrowleft') cycleVariant(-1);
+    if (k === 'arrowright') cycleVariant(1);
+  } else if (scene === 'play') {
+    if (k === 'p' || k === 'escape') paused = !paused;
+  } else if (scene === 'over') {
+    if (k === 'enter' || k === ' ') newGame();
+    if (k === 'escape' || k === 'm') scene = 'title';
+  }
+}
+
+function stepTitle(dt) {
+  ui.t += dt;
+  ui.lockShake = Math.max(0, (ui.lockShake || 0) - dt);
+  // Sprite17: the big gun on the title screen points towards the mouse
+  const dx = mouse.x - 200, dy = mouse.y - 0;
+  if (dx || dy) ui.gunDir = 90 - Math.atan2(dy, dx) * 180 / Math.PI;
+  const panel = showDifficulty;
+  uiSize('diff', !panel && overCostume('diffBtn', -180, 0, ui.sizes.diff || 100) ? 120 : 100, dt);
+  uiSize('play', !panel && overCostume('playBtn', -193, -40, ui.sizes.play || 100) ? 120 : 100, dt);
+  uiSize('closeX', panel && overCostume('closeX', 195, 130, ui.sizes.closeX || 30) ? 40 : 30, dt);
+  for (let d = 1; d <= 10; d++) uiSize('d' + d, panel && overCostume('d' + d, -171, DIFF_Y[d], ui.sizes['d' + d] || 200) ? 220 : 200, dt);
+  for (const s of stars) { s.x -= (4 + s.z * 10) * dt; if (s.x < -242) { s.x = 242; s.y = srand(-180, 180.0); } }
+}
+
+// ---------- main step ----------
+function step(dt) {
+  if (scene === 'title') stepTitle(dt);
+  else if (scene === 'play') {
+    if (!paused) {
+      stepGame(dt);
+      for (const s of stars) { s.x -= (6 + s.z * 18) * dt; if (s.x < -242) { s.x = 242; s.y = srand(-180, 180.0); } }
+    }
+  } else if (scene === 'over') { if (G) stepFx(G, dt); }
+}
+
+// =====================================================================
+//  RENDERING
+// =====================================================================
+let cv, ctx, IMG = {}, viewScale = 1;
+
+function drawC(key, x, y, size = 100, dir = 90, alpha = 1) {
+  const c = COST[key], im = IMG[key];
+  if (!im || !im.complete || !(im.naturalWidth || im.width)) return;
+  const s = size / 100;
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.translate(240 + x, 180 - y);
+  if (dir !== 90) ctx.rotate((dir - 90) * Math.PI / 180);
+  ctx.scale(s, s);
+  ctx.drawImage(im, -c[1], -c[2], c[3], c[4]);
+  ctx.restore();
+}
+
+function text(str, x, y, opt = {}) {
+  ctx.save();
+  ctx.font = `${opt.weight || 700} ${opt.size || 11}px "Segoe UI", system-ui, -apple-system, sans-serif`;
+  ctx.textAlign = opt.align || 'left';
+  ctx.textBaseline = opt.base || 'middle';
+  ctx.globalAlpha *= opt.alpha === undefined ? 1 : opt.alpha;
+  const sx = 240 + x, sy = 180 - y;
+  if (opt.stroke !== false) {
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = opt.lw || 3;
+    ctx.strokeStyle = opt.stroke || '#000';
+    ctx.strokeText(str, sx, sy);
+  }
+  ctx.fillStyle = opt.col || '#fff';
+  ctx.fillText(str, sx, sy);
+  ctx.restore();
+}
+
+// a button drawn in the same style as his Play / Difficulty buttons
+function styledButton(x, y, w, h, label, hover) {
+  const s = hover ? 1.1 : 1;
+  ctx.save();
+  ctx.translate(240 + x, 180 - y); ctx.scale(s, s);
+  const gr = ctx.createLinearGradient(-w / 2, 0, w / 2, 0);
+  gr.addColorStop(0, '#00b4ff'); gr.addColorStop(1, '#190094');
+  ctx.fillStyle = gr; ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5;
+  ctx.fillRect(-w / 2, -h / 2, w, h); ctx.strokeRect(-w / 2, -h / 2, w, h);
+  ctx.restore();
+  text(label, x, y, { size: 14 * s, weight: 400, stroke: false });
+}
+
+function drawStars(alpha, skipLogo) {
+  ctx.save();
+  for (const s of stars) {
+    if (skipLogo && s.y > 108 && s.x < 125) continue;   // keep the logo clean
+    ctx.globalAlpha = alpha * (0.25 + s.z * 0.55);
+    ctx.fillStyle = s.z > 0.8 ? '#bfefff' : '#fff';
+    const r = s.z > 0.85 ? 1.5 : 1;
+    ctx.fillRect(240 + s.x, 180 - s.y, r, r);
+  }
+  ctx.restore();
+}
+
+function drawTitle() {
+  drawC('bgTitle', 0, 0);
+  drawStars(0.7, true);
+  drawC('titleGun', 200, 0, 400, ui.gunDir);
+  drawC('diffBtn', -180, 0, ui.sizes.diff || 100);
+  drawC('playBtn', -193, -40, ui.sizes.play || 100);
+  text(DIFFS[SAVE.difficulty], -132, 0, { size: 12, col: '#00d0ff', stroke: '#001a40' });
+
+  // cannon picker (CannonVariant)
+  const v = VARIANTS[SAVE.variant], locked = !variantUnlocked(SAVE.variant);
+  const sh = ui.lockShake ? Math.sin(ui.t * 60) * 4 * ui.lockShake / 0.4 : 0;
+  text('CANNON', -180, -72, { size: 10, col: '#7fa8c9', stroke: false });
+  for (const [x, ch, dirn] of [[SEL.lx, '◀', -1], [SEL.rx, '▶', 1]]) {
+    const hov = overRect(x, SEL.y, 22, 26);
+    text(ch, x, SEL.y, { size: hov ? 18 : 15, col: hov ? '#fff' : '#00b4ff' });
+  }
+  drawC('cannon' + (SAVE.variant * 2 - 1), -190 + sh, SEL.y, 180, 90, locked ? 0.3 : 1);
+  text(v.name, -180, -124, { size: 13, col: locked ? '#777' : '#fff' });
+  if (locked) text(`LOCKED: ${v.xp} credits`, -180, -139, { size: 10, col: '#ff6b6b' });
+  else text(v.desc, -232, -139, { size: 8.5, col: '#9ab', stroke: false, align: 'left', weight: 600 });
+
+  text(`Credits: ${SAVE.credits}`, -232, -160, { size: 10, col: '#00d0ff', stroke: false, align: 'left' });
+  const best = SAVE.best[SAVE.difficulty] || 0;
+  if (best) text(`Best on ${DIFFS[SAVE.difficulty]}: ${best} gold`, -232, -172, { size: 9, col: '#ffd43b', stroke: false, align: 'left', weight: 600 });
+  text('W/S move   E shoot   hold R  MEGA BEAM', 230, -146, { size: 9, col: '#8ab', stroke: false, align: 'right', weight: 600 });
+  text(SAVE.sound ? 'sound: ON' : 'sound: OFF', 230, -162, { size: 9, col: overRect(200, -160, 90, 20) ? '#fff' : '#678', stroke: false, align: 'right', weight: 600 });
+
+  if (showDifficulty) {
+    drawC('panel', 0, 0);
+    for (let d = 1; d <= 10; d++) {
+      if (d === SAVE.difficulty) {
+        const s = (ui.sizes['d' + d] || 200) / 100;
+        ctx.save(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+        ctx.strokeRect(240 - 171 - 23.54 * s - 3, 180 - DIFF_Y[d] - 7.12 * s - 3, 47.09 * s + 6, 14.09 * s + 6);
+        ctx.restore();
+      }
+      drawC('d' + d, -171, DIFF_Y[d], ui.sizes['d' + d] || 200);
+    }
+    drawC('closeX', 195, 130, ui.sizes.closeX || 30);
+    const D = SAVE.difficulty;
+    text(DIFFS[D], 20, 95, { size: 26, col: '#00d0ff', stroke: '#007aff', lw: 4, align: 'left' });
+    text(`Difficulty ${D} of 10`, 22, 68, { size: 11, col: '#9ab', stroke: false, align: 'left' });
+    const lines = [
+      `Each shot shrinks a square by ${(30 / D).toFixed(1)}%`,
+      `Squares pop when smaller than ${killSize(D)}%`,
+      `Giant squares: 1 in ${101 - 2 * D}`,
+      `Credits per gold: x${D}`,
+      `Best: ${SAVE.best[D] || 0} gold`,
+    ];
+    lines.forEach((l, i) => text(l, 22, 40 - i * 20, { size: 11, col: i === 4 ? '#ffd43b' : '#dde', stroke: false, align: 'left', weight: 600 }));
+  }
+}
+
+function drawGame() {
+  const g = G;
+  ctx.save();
+  if (g.shake > 0) {
+    const m = g.shake * 10;
+    ctx.translate(srand(-m, m * 1.0), srand(-m, m * 1.0));
+  }
+  ctx.fillStyle = '#191919'; ctx.fillRect(-20, -20, 520, 400);
+  drawStars(1);
+  drawC('bgGame', 0, 0);   // dark backdrop with the black rail on the left
+
+  // rail glow where the squares crash
+  if (g.hurt > 0) {
+    ctx.save(); ctx.globalAlpha = g.hurt / 0.35 * 0.6; ctx.fillStyle = '#ff2a2a';
+    ctx.fillRect(240 + T.lane - 2, 0, 4, 360); ctx.restore();
+  }
+
+  // bullets go to the back layer (like Sprite3)
+  for (const b of g.bullets) drawC('bullet', b.x, b.y, b.size, b.dir);
+
+  // squares
+  for (const e of g.enemies) {
+    const wob = e.max >= 250 ? Math.sin(g.t * 3 + e.wob) * 1.5 : 0;
+    drawC('enemy' + e.c, e.x, e.y + wob, e.size);
+    if (e.flash > 0) {
+      const h = enemyHalf(e) - 1.2 * e.size / 100;
+      ctx.save(); ctx.globalAlpha = 0.65 * e.flash / 0.07; ctx.fillStyle = '#fff';
+      ctx.fillRect(240 + e.x - h, 180 - (e.y + wob) - h, h * 2, h * 2); ctx.restore();
+    }
+    if (e.max >= 250 && e.size > killSize(g.D)) {
+      // health strip for the giants
+      const w = Math.min(120, enemyHalf(e) * 2), k = (e.size - killSize(g.D)) / (e.max - killSize(g.D));
+      const y = e.y + enemyHalf(e) + 6;
+      ctx.save(); ctx.fillStyle = '#000'; ctx.fillRect(240 + e.x - w / 2 - 1, 180 - y - 2, w + 2, 4);
+      ctx.fillStyle = ENEMY_COLORS[e.c - 1]; ctx.fillRect(240 + e.x - w / 2, 180 - y - 1, w * clamp(k, 0, 1), 2); ctx.restore();
+    }
+  }
+
+  // MEGA BEAM
+  const b = g.beam;
+  if (b.st === 'fire') {
+    const flick = 0.75 + Math.random() * 0.25;
+    const fade = Math.min(1, b.t / 0.15, (T.beamFire - b.t) / 0.08 + 0.2);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    drawC('beam', T.cannonX, g.y, 100, 90, 0.55 * flick * fade);
+    ctx.restore();
+    drawC('beam', T.cannonX, g.y, 100, 90, 0.5 * fade);
+  }
+
+  // cannon
+  if (!g.dead) {
+    const vi = g.variant;
+    let key = 'cannon' + (vi * 2 - 1 + (g.recoil > 0 ? 1 : 0));
+    if (b.st === 'charge' || b.st === 'fire') key = 'beamGun';
+    drawC(key, T.cannonX, g.y, 100);
+    if (b.st === 'charge') {
+      const k = 1 - b.t / T.beamCharge;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      const gr = ctx.createRadialGradient(240 + T.cannonX + 36, 180 - g.y, 0, 240 + T.cannonX + 36, 180 - g.y, 6 + k * 22);
+      gr.addColorStop(0, 'rgba(0,218,255,0.9)'); gr.addColorStop(1, 'rgba(0,218,255,0)');
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(240 + T.cannonX + 36, 180 - g.y, 6 + k * 22, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // splash explosions
+  for (const ex of g.explosions) drawC('splash', ex.x, ex.y, ex.size, ex.dir, Math.min(1, ex.t / 0.05));
+
+  // particles
+  for (const p of g.parts) {
+    ctx.save(); ctx.globalAlpha = clamp(p.life / p.max * 1.4, 0, 1); ctx.fillStyle = p.col;
+    ctx.fillRect(240 + p.x - p.sz / 2, 180 - p.y - p.sz / 2, p.sz, p.sz); ctx.restore();
+  }
+  for (const p of g.popups) text(p.text, p.x, p.y, { size: 10, col: p.col, alpha: clamp(p.t / 0.4, 0, 1) });
+
+  // upgrade cards (Sprite19, size 400, front layer)
+  for (const c of g.cards) {
+    let size = 400, x = c.x, y = c.y, a = 1;
+    if (c.t < 0.12) size = 400 * (0.4 + 0.6 * c.t / 0.12) * (1 + 0.15 * Math.sin(c.t / 0.12 * Math.PI));
+    else if (c.t > 1.0) {
+      const k = clamp((c.t - 1.0) / 0.35, 0, 1), e = k * k;
+      x = c.x + (T.cannonX - c.x) * e; y = c.y + (g.y - c.y) * e; size = 400 * (1 - 0.85 * k); a = 1 - k * 0.6;
+    }
+    drawC('card' + c.type, x, y, size, 90, a);
+    if (c.t < 1.0) text(CARD_NAMES[c.type], c.x, c.y < -90 ? c.y + 58 : c.y - 56, { size: 10, col: '#00fffa', alpha: clamp((1.0 - c.t) / 0.2, 0, 1) });
+  }
+  ctx.restore();
+
+  drawHud(g);
+
+  if (paused) {
+    ctx.save(); ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, 480, 360); ctx.restore();
+    text('PAUSED', 0, 20, { size: 34, col: '#00d0ff', stroke: '#007aff', lw: 4, align: 'center' });
+    text('press P to keep playing', 0, -14, { size: 11, col: '#9ab', stroke: false, align: 'center' });
+  }
+}
+
+function drawHud(g) {
+  // health
+  const max = Math.max(g.startHealth, g.health);
+  const k = clamp(g.health / max, 0, 1);
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(46, 8, 132, 14);
+  ctx.fillStyle = g.hurt > 0 ? '#ff5050' : (k < 0.3 ? '#ff6b3b' : '#56e6ff');
+  ctx.fillRect(48, 10, 128 * k, 10);
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.strokeRect(46, 8, 132, 14);
+  ctx.restore();
+  text(`HEALTH ${Math.ceil(g.health)}`, -188, 165, { size: 9, col: '#fff', lw: 2.5 });
+
+  text(`GOLD ${g.gold}`, 0, 164, { size: 14, col: '#ffd43b', align: 'center' });
+  const m = Math.floor(g.t / 60), s = Math.floor(g.t % 60);
+  text(`${DIFFS[g.D]}  ${m}:${String(s).padStart(2, '0')}`, 232, 164, { size: 10, col: '#9ab', align: 'right' });
+
+  // Experience bar: fills with kills, full bar = upgrade card
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(46, 25, 132, 6);
+  ctx.fillStyle = '#00fffa'; ctx.fillRect(47, 26, 130 * clamp(g.xp / xpNeed(g), 0, 1), 4);
+  ctx.restore();
+  text(`EXPERIENCE  next card`, -188, 145, { size: 7, col: '#8fd', lw: 2 });
+
+  // upgrade stats (his variables)
+  const stats = `ATK SPEED ${g.attackSpeed.toFixed(1)}   DMG +${g.attackDamage}   ${g.splash ? 'SPLASH ON' : 'NO SPLASH'}`;
+  text(stats, 232, -170, { size: 9, col: '#cde', align: 'right', lw: 2.5 });
+
+  // MEGA BEAM meter
+  const b = g.beam;
+  let fill = 1, label = 'MEGA BEAM  hold R', col = '#00daff';
+  if (b.st === 'idle' && b.hold > 0) { fill = b.hold / T.beamHold; label = 'HOLD...'; }
+  else if (b.st === 'charge') { fill = 1 - b.t / T.beamCharge; label = 'CHARGING'; col = '#ffffff'; }
+  else if (b.st === 'fire') { fill = b.t / T.beamFire; label = 'MEGA BEAM!'; col = '#ffffff'; }
+  else if (b.st === 'cool') { fill = 1 - b.t / T.beamCool; label = 'recharging'; col = '#2b6d80'; }
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(52, 340, 100, 10);
+  ctx.fillStyle = col; ctx.fillRect(53, 341, 98 * clamp(fill, 0, 1), 8);
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 1.2; ctx.strokeRect(52, 340, 100, 10);
+  ctx.restore();
+  text(label, -136, -165, { size: 8, col: '#fff', align: 'center', lw: 2.2 });
+}
+
+function drawOver() {
+  drawGame();
+  const g = G, r = runResult || { xp: 0, unlocked: [] };
+  ctx.save(); ctx.globalAlpha = 0.93; drawC('panel', 0, 0); ctx.restore();
+  text('CANNON DESTROYED', 0, 118, { size: 30, col: '#00d0ff', stroke: '#007aff', lw: 4, align: 'center' });
+  text(`${DIFFS[g.D]}  ·  ${VARIANTS[g.variant].name}`, 0, 92, { size: 11, col: '#9ab', stroke: false, align: 'center' });
+  const m = Math.floor(g.t / 60), s = Math.floor(g.t % 60);
+  const rows = [
+    ['Gold', g.gold + (r.newBest ? '   NEW BEST!' : ''), '#ffd43b'],
+    ['Survived', `${m}:${String(s).padStart(2, '0')}`, '#fff'],
+    ['Upgrade cards', g.cardsGot, '#00fffa'],
+    ['Credits', `+${r.xp}  (total ${SAVE.credits})`, '#00d0ff'],
+  ];
+  rows.forEach(([a, b2, c], i) => {
+    const y = 58 - i * 22;
+    text(a, -20, y, { size: 13, col: '#9ab', stroke: false, align: 'right', weight: 600 });
+    text(String(b2), 0, y, { size: 13, col: c, stroke: false, align: 'left' });
+  });
+  if (r.unlocked.length) text(`Unlocked cannon: ${r.unlocked.join(', ')}!`, 0, -50, { size: 13, col: '#35ff00', align: 'center' });
+  else if (!r.newBest && r.prevBest) text(`Best: ${r.prevBest} gold`, 0, -50, { size: 11, col: '#ffd43b', stroke: false, align: 'center' });
+  for (const id in OVER_BTNS) {
+    const b = OVER_BTNS[id];
+    styledButton(b.x, b.y, b.w, b.h, b.label, overRect(b.x, b.y, b.w, b.h));
+  }
+  text('Enter = play again   Esc = menu', 0, -146, { size: 9, col: '#678', stroke: false, align: 'center' });
+}
+
+function draw() {
+  ctx.setTransform(viewScale, 0, 0, viewScale, 0, 0);
+  ctx.fillStyle = '#191919'; ctx.fillRect(0, 0, 480, 360);
+  if (scene === 'title') drawTitle();
+  else if (scene === 'play') drawGame();
+  else if (scene === 'over') drawOver();
+}
+
+// ---------- boot ----------
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  const s = Math.min(window.innerWidth / 480, window.innerHeight / 360);
+  cv.style.width = Math.floor(480 * s) + 'px';
+  cv.style.height = Math.floor(360 * s) + 'px';
+  cv.width = Math.round(480 * s * dpr);
+  cv.height = Math.round(360 * s * dpr);
+  viewScale = cv.width / 480;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+}
+
+function toStage(ev) {
+  const r = cv.getBoundingClientRect();
+  mouse.x = (ev.clientX - r.left) / r.width * 480 - 240;
+  mouse.y = 180 - (ev.clientY - r.top) / r.height * 360;
+}
+
+function boot() {
+  cv = document.getElementById('c');
+  ctx = cv.getContext('2d');
+  loadSave();
+  for (const k in COST) { const im = new Image(); im.src = A + COST[k][0]; IMG[k] = im; }
+  makeStars();
+  resize();
+  window.addEventListener('resize', resize);
+  window.addEventListener('keydown', ev => {
+    const k = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key.toLowerCase();
+    if (!keys[k]) onKeyDown(k);
+    keys[k] = true;
+    if (k === ' ' || k.startsWith('arrow')) ev.preventDefault();
+  });
+  window.addEventListener('keyup', ev => { keys[ev.key.toLowerCase()] = false; });
+  window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; if (scene === 'play') paused = true; });
+  cv.addEventListener('mousemove', toStage);
+  cv.addEventListener('mousedown', ev => { toStage(ev); mouse.down = true; onClick(); });
+  window.addEventListener('mouseup', () => { mouse.down = false; });
+  cv.focus();
+  let last = performance.now(), acc = 0;
+  const STEP = 1 / 60;
+  function frame(now) {
+    acc += Math.min(0.1, (now - last) / 1000); last = now;
+    while (acc >= STEP) { step(STEP); acc -= STEP; }
+    draw();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+// hooks for headless testing
+window.SG = { step, newGame, keys, mouse, onClick, onKeyDown, get G() { return G; }, get scene() { return scene; }, set scene(v) { scene = v; }, SAVE: () => SAVE, T, VARIANTS, hitDamage, killSize, beamHits, draw, drawTitle };
+if (!window.SG_HEADLESS) boot();
+</script>
+</body>
+</html>
