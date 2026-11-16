@@ -111,7 +111,20 @@ const CARDS = [null,
   { name: 'Time Warp',        col: '#ef00ff', w: 1, r: 2 },
   { name: 'Golden Gun',       col: '#ffd43b', w: 1, r: 2 },
   { name: 'AI Turrets',       col: '#7dff6a', w: 3, r: 1 },     // 19: two auto-turrets pop out of the hull for a while
+  { name: 'Repair Drones',    col: '#63e2ff', w: 2, r: 1 },     // 20: two drones weld the hull back together
+  { name: 'Tractor Beam',     col: '#ffd43b', w: 2, r: 0 },     // 21: pulls in gold coins from far away
+  { name: 'Missile Pods',     col: '#ff9300', w: 2, r: 1 },     // 22: homing missiles from pods on the hull
 ];
+// sectors: every 5 waves the ship flies into the next one (and loops)
+const SECTORS = [
+  { id: 'deep',   name: 'DEEP SPACE',     col: '#00d0ff', desc: 'Open space. Squares ahead.' },
+  { id: 'rocks',  name: 'ASTEROID FIELD', col: '#d8b48a', desc: 'Rocks drift at the hull. Shoot them for gold.' },
+  { id: 'nebula', name: 'ION NEBULA',     col: '#c38bff', desc: 'Thick fog: squares are hard to see far away.' },
+  { id: 'mother', name: 'MOTHERSHIP',     col: '#ff3548', desc: 'The enemy mothership docks alongside.' },
+];
+const MOTHER = { kind: 'mother', name: 'ENEMY MOTHERSHIP', col: '#ff3548' };
+const sectorNum = g => Math.floor((g.wave - 1) / 5);
+const sectorOf = g => SECTORS[sectorNum(g) % SECTORS.length];
 const RARITY = [{ name: '', col: '#ffffff' }, { name: 'RARE', col: '#4da3ff' }, { name: 'LEGENDARY', col: '#ffb300' }];
 
 // daily challenge modifiers (two are picked from the date)
@@ -154,6 +167,7 @@ const SHOP = [
   { id: 'blast',     name: 'Heavy: Big Bang', desc: '+20% Heavy explosion size',       max: 3, base: 300, col: '#ff9300', needs: 2 },
   { id: 'burner',    name: 'Scout: Afterburner', desc: '+12% Scout speed and fire rate', max: 3, base: 400, col: '#00fffa', needs: 3 },
   { id: 'quad',      name: 'Triple: Quad Barrel', desc: 'A 4th bullet, then +8% damage', max: 3, base: 600, col: '#ffd43b', needs: 4 },
+  { id: 'shieldgen', name: 'Shield Generator', desc: 'Start with shields, they slowly recharge (domes on the hull)', max: 3, base: 350, col: '#63e2ff' },
   { id: 'bay',       name: 'Turret Bay',     desc: 'AI turrets last +5 s and hit 20% harder', max: 3, base: 400, col: '#7dff6a' },
 ];
 // higher tiers: hull and rounds now go to level 8
@@ -190,6 +204,13 @@ const ACHS = [
   { id: 'ghost25',  name: 'Ghostbuster',    desc: 'Pop 25 ghosts in one run',              reward: 300 },
   { id: 'healer10', name: 'No Healing',     desc: 'Pop 10 healers in one run',             reward: 250 },
   { id: 'robots',   name: 'Robot Friends',  desc: 'Have 3 AI turrets out at once',         reward: 250 },
+  { id: 'sector2',  name: 'Rock Hopper',    desc: 'Fly into the Asteroid Field',           reward: 200 },
+  { id: 'sector4',  name: "Lion's Den",     desc: 'Reach the enemy Mothership sector',     reward: 500 },
+  { id: 'mother',   name: 'Mothership Down', desc: 'Destroy the enemy mothership',         reward: 1000 },
+  { id: 'rocks20',  name: 'Space Miner',    desc: 'Shoot 20 asteroids in one run',         reward: 250 },
+  { id: 'missile25', name: 'Fire and Forget', desc: 'Pop 25 squares with missiles in one run', reward: 300 },
+  { id: 'tractor20', name: 'Vacuum Cleaner', desc: 'Pull in 20 coins with one tractor beam', reward: 250 },
+  { id: 'patchup',  name: 'Patched Up',     desc: 'Repair drones fix 10 dents in one run',  reward: 250 },
 ];
 
 // ---------------------------------------------------------------------
@@ -220,7 +241,8 @@ const T = {
   hFrom: 0.35,             // new square types show up sooner
   hBoss: 0.12,             // bosses come sooner
   hFire: 0.1,              // shooters and bosses fire faster
-  aiDur: 20, aiDmg: 0.45, aiRate: 0.32,   // AI turrets: seconds out, damage per shot (x a normal hit), seconds between shots
+  aiDur: 20, aiDmg: 0.45, aiRate: 0.32,
+  rockDmg: 0.34, motherHp: 1.1, missileDmg: 1.6,   // asteroid hull damage per unit of radius, mothership core HP (x a boss), missile blast (x a hit)   // AI turrets: seconds out, damage per shot (x a normal hit), seconds between shots
   lowGrow: 1.2,              // squares grow faster on Normal and below
   lowRate: 1,              // spawn rate on Normal and below (the faster rail made Normal too easy)
   hGrow: 0.15,             // squares grow bigger over time 15% faster per step (keeps upgraded runs short on hard modes)
@@ -455,6 +477,19 @@ const SFX = {
   wave() { const c = AU.ctx; if (!c) return; tone({ type: 'triangle', f: 660, dur: 0.12, v: 0.08 }); tone({ type: 'triangle', f: 990, dur: 0.16, v: 0.08, at: c.currentTime + 0.1 }); },
   milestone() { const c = AU.ctx; if (!c) return; [60, 64, 67, 72, 76].forEach((m, i) => tone({ type: 'square', f: mtof(m + 12), dur: 0.18, v: 0.06, lp: 3500, at: c.currentTime + i * 0.08 })); },
   revive() { tone({ type: 'sawtooth', f: 110, f2: 880, dur: 0.6, v: 0.2, lp: 3000 }); noise({ ft: 'bandpass', f: 400, f2: 4000, dur: 0.6, v: 0.3 }); },
+  drones() { const c = AU.ctx; if (!c) return; tone({ type: 'triangle', f: 600, f2: 900, dur: 0.3, v: 0.07 }); tone({ type: 'triangle', f: 900, f2: 1200, dur: 0.3, v: 0.06, at: c.currentTime + 0.15 }); },
+  weld() { if (gate('weld', 0.2)) noise({ ft: 'bandpass', f: 3500, dur: 0.25, v: 0.08, q: 3 }); },
+  tractor() { tone({ type: 'sine', f: 220, f2: 660, dur: 0.6, v: 0.1 }); tone({ type: 'sine', f: 330, f2: 990, dur: 0.6, v: 0.06 }); },
+  pods() { const c = AU.ctx; if (!c) return; for (let i = 0; i < 3; i++) tone({ type: 'square', f: 400 + i * 150, dur: 0.05, v: 0.06, lp: 2500, at: c.currentTime + i * 0.07 }); },
+  missile() { if (gate('missile', 0.1)) { noise({ ft: 'bandpass', f: 800, f2: 2500, dur: 0.3, v: 0.12 }); tone({ type: 'sawtooth', f: 200, f2: 500, dur: 0.2, v: 0.05, lp: 1500 }); } },
+  boom() { if (gate('boom', 0.06)) { noise({ ft: 'lowpass', f: 1800, f2: 150, dur: 0.3, v: 0.3 }); tone({ type: 'sine', f: 140, f2: 45, dur: 0.25, v: 0.35 }); } },
+  rock() { if (gate('rock', 0.05)) { noise({ ft: 'lowpass', f: 900, f2: 120, dur: 0.25, v: 0.3 }); tone({ type: 'triangle', f: 160, f2: 60, dur: 0.2, v: 0.2 }); } },
+  sector() { const c = AU.ctx; if (!c) return; [55, 62, 67, 74].forEach((m, i) => tone({ type: 'sawtooth', f: mtof(m), dur: 0.5, v: 0.05, lp: 1800, at: c.currentTime + i * 0.12 })); },
+  horn() { const c = AU.ctx; if (!c) return; for (let i = 0; i < 2; i++) { tone({ type: 'sawtooth', f: 73, dur: 0.9, v: 0.14, lp: 500, hold: 0.6, at: c.currentTime + i * 1.1 }); tone({ type: 'sawtooth', f: 110, dur: 0.9, v: 0.08, lp: 600, hold: 0.6, at: c.currentTime + i * 1.1 }); } },
+  dock() { tone({ type: 'sine', f: 70, f2: 30, dur: 0.6, v: 0.6 }); noise({ ft: 'lowpass', f: 600, f2: 80, dur: 0.6, v: 0.4 }); },
+  bigShot() { tone({ type: 'sawtooth', f: 160, f2: 60, dur: 0.6, v: 0.18, lp: 900 }); noise({ ft: 'lowpass', f: 1200, f2: 100, dur: 0.5, v: 0.25 }); },
+  shieldsDown() { const c = AU.ctx; if (!c) return; [880, 660, 440].forEach((f, i) => tone({ type: 'square', f, dur: 0.12, v: 0.06, lp: 2500, at: c.currentTime + i * 0.1 })); },
+  thunder() { noise({ ft: 'lowpass', f: 500, f2: 60, dur: 1.2, v: 0.12, a: 0.02 }); },
   aiShot() { if (gate('ai', 0.05)) { tone({ type: 'square', f: 2300, f2: 1100, dur: 0.035, v: 0.035, lp: 6000 }); noise({ ft: 'highpass', f: 4000, dur: 0.02, v: 0.03 }); } },
   aiDeploy() { const c = AU.ctx; if (!c) return; tone({ type: 'sawtooth', f: 180, f2: 560, dur: 0.45, v: 0.08, lp: 1800 }); tone({ type: 'triangle', f: 1300, dur: 0.04, v: 0.1, at: c.currentTime + 0.45 }); tone({ type: 'sine', f: 880, dur: 0.12, v: 0.06, at: c.currentTime + 0.5 }); tone({ type: 'sine', f: 1320, dur: 0.15, v: 0.06, at: c.currentTime + 0.58 }); },
   aiRetract() { const c = AU.ctx; if (!c) return; tone({ type: 'sine', f: 1320, dur: 0.1, v: 0.05 }); tone({ type: 'sine', f: 880, dur: 0.12, v: 0.05, at: c.currentTime + 0.08 }); tone({ type: 'sawtooth', f: 560, f2: 170, dur: 0.4, v: 0.07, lp: 1500, at: c.currentTime + 0.15 }); },
@@ -547,7 +582,7 @@ function xpNeed(g) { return (T.xpBase + g.level * T.xpStep) * g.xpMul; }
 function beamCool(g) { return Math.max(1.5, T.beamCool - 0.8 * lv('capacitor') - g.beamBonus); }
 const mod = (g, id) => !!(g && g.mods && g.mods[id]);
 function bossGap(g) { return mod(g, 'bossrush') ? 75 : T.bossEvery / (1 + T.hBoss * hard(g)); }
-function coinRange() { return 30 + 20 * lv('coinmag'); }
+function coinRange(g = G) { return (30 + 20 * lv('coinmag')) * (g && g.tractor > 0 ? 4 : 1); }
 // Hard Rounds is worth less on hard modes (a flat +1 there is huge, because a normal hit is only 3)
 function roundsScale(D) { return D <= 3 ? 1 : Math.pow(3 / D, 0.8); }
 function armorMul() { return 1 - 0.04 * lv('armor'); }
@@ -579,6 +614,9 @@ function newGame(opts = {}) {
     chain: 0, slow: 1, golden: 0, beamExtra: 0, overdrive: 0, shieldMax: 3, revives: lv('revive') ? 1 : 0, revived: 0,
     dmgMul: 1, ghostKills: 0, healerKills: 0, legends: 0, extraShots: 0,
     ai: { t: 0, max: 0, n: 0, list: [], retracted: true }, hullMarks: [], smokeT: 0,
+    rocks: [], rockCd: 2, rocksShot: 0, sectorBanner: 0, nebFlash: 0, nebT: 5,
+    drones: { t: 0, fixT: 0, list: [] }, dentsFixed: 0, tractor: 0, tractorCoins: 0,
+    pods: { t: 0, cd: 0, side: 1 }, missiles: [], missileKills: 0, shieldRegen: 0, motherNum: 0,
   };
   const g0 = G;
   if (g0.variant === 1) g0.dmgMul *= 1 + 0.1 * lv('vet');
@@ -588,6 +626,7 @@ function newGame(opts = {}) {
   if (mods.nobeam) { g0.goldMul *= 1.4; g0.beam.st = 'off'; }
   if (mods.cardrain) g0.xpMul *= 0.6;
   g0.nextBoss = bossGap(g0);
+  g0.shield = Math.min(g0.shieldMax, lv('shieldgen'));       // Shield Generator: start with shields
   for (let i = 0; i < lv('head'); i++) giveCard(G, true);
   scene = 'play'; paused = false;
   setMusic('game');
@@ -645,6 +684,7 @@ function spawnEnemy(g) {
 }
 
 function spawnBoss(g) {
+  if (sectorOf(g).id === 'mother') return spawnMother(g);
   const b = BOSSES[g.bossNum % BOSSES.length];
   const size = T.bossSize * growth(g.t) * (1 + 0.15 * g.bossNum) ;
   const e = { type: 'boss', boss: b, x: WW / 2 + 120, y: 0, size, max: size, killAt: size * 0.18, base: 22.05,
@@ -692,8 +732,9 @@ function hurtEnemy(g, e, dmg, src) {
     g.popups.push({ x: e.x, y: e.y + half(e) + 12, val: 'CRIT', t: 0.6, col: '#fff100' });
   }
   if (e.boss) d *= T.bossRes;
-  else if (e.armor < 1) { if (src === 'bullet' || src === 'ai') d *= e.armor; else if (src === 'splash') d *= (1 + e.armor) / 2; }
-  e.size -= d;
+  else if (e.armor < 1) { if (src === 'bullet' || src === 'ai') d *= e.armor; else if (src === 'splash' || src === 'missile') d *= (1 + e.armor) / 2; }
+  if (e.mother && e.turrets.some(o => !o.dead)) d *= 0.15;     // its shield is up while the turrets live
+  if (e.hp !== undefined) e.hp -= d; else e.size -= d;
   e.flash = 0.08;
   damagePopup(g, e, d);
   if (e.armor < 1 && src === 'bullet') {
@@ -708,12 +749,12 @@ function hurtEnemy(g, e, dmg, src) {
       addTrauma(g, 0.25);
     }
   }
-  if (e.size < (e.boss ? e.killAt : killSize(g.D))) killEnemy(g, e, src);
+  if (e.hp !== undefined ? e.hp <= 0 : e.size < (e.boss ? e.killAt : killSize(g.D))) killEnemy(g, e, src);
 }
 
 function enemyColor(e) {
   if (e.boss) return e.boss.col;
-  return { square: SQ_COLORS[e.c - 1], dasher: '#ffffff', splitter: '#fff100', armored: '#b8c0cc', shooter: '#ff2a2a', swarm: '#ff5a1f', ghost: '#d9c2ff', healer: '#35ff00' }[e.type];
+  return { mturret: '#ff3548', square: SQ_COLORS[e.c - 1], dasher: '#ffffff', splitter: '#fff100', armored: '#b8c0cc', shooter: '#ff2a2a', swarm: '#ff5a1f', ghost: '#d9c2ff', healer: '#35ff00' }[e.type];
 }
 
 const SPARKCOL = {};
@@ -759,6 +800,11 @@ function killEnemy(g, e, src) {
   if (src === 'beam') g.beam.kills++;
   if (src === 'shock') g.shock.kills++;
   if (e.type === 'ghost' && ++g.ghostKills >= 25) unlock('ghost25');
+  if (src === 'missile' && ++g.missileKills >= 25) unlock('missile25');
+  if (e.type === 'mturret') {
+    const m = g.boss; addTrauma(g, 0.4);
+    if (m && m.mother && m.turrets.every(o => o.dead || o === e)) { g.popups.push({ x: m.x - 40, y: 20, val: 'SHIELDS DOWN!', t: 1.6, col: '#ff8a95' }); SFX.shieldsDown(); }
+  }
   if (e.type === 'healer' && ++g.healerKills >= 10) unlock('healer10');
   if (e.boss) for (let i = 0; i < 8; i++) dropCoin(g, e.x + rnd(-h, h) * 0.6, e.y + rnd(-h, h) * 0.6, 3);
   else if (Math.random() < 0.16) dropCoin(g, e.x, e.y, 3);
@@ -766,6 +812,7 @@ function killEnemy(g, e, src) {
     SFX.bigPop(); g.freeze = 0.28; addTrauma(g, 0.9); g.flash = 0.5;
     for (let i = 0; i < 3; i++) setTimeoutSafe(() => { if (G === g) burst(g, e.x + rnd(-h, h), e.y + rnd(-h, h), col, 20, 1.6, true); }, 120 * i);
     g.bossesKilled++; SAVE.stats.bosses++; SAVE.stats.bossTypes[e.boss.kind] = true;
+    if (e.mother) { unlock('mother'); for (const o of e.turrets) if (!o.dead) { o.dead = true; burst(g, o.x, o.y, '#ff3548', 20, 1.4, true); } }
     g.bossFade = { name: e.boss.name, col: e.boss.col, t: 0.8 };
     g.boss = null; g.nextBoss = g.t + bossGap(g); setMusic('game');
     giveCard(g); giveCard(g);
@@ -805,6 +852,9 @@ function cardOk(g, t) {
     case 17: return g.slow >= 1;
     case 18: return !g.golden;
     case 19: return g.ai.n < 3 || g.ai.t < 30;
+    case 20: return g.drones.t < 30;
+    case 21: return g.tractor < 40;
+    case 22: return g.pods.t < 30;
     case 7: return g.beamBonus < 3 && g.beam.st !== 'off';
     default: return true;
   }
@@ -850,6 +900,141 @@ function stepAI(g, dt) {
   }
   if (ai.t <= 0 && ai.list.every(tu => tu.open <= 0)) { ai.list = []; ai.n = 0; }
 }
+// ---- Repair Drones, Tractor Beam, Missile Pods, Shield Generator ----
+function stepGadgets(g, dt) {
+  const lane = laneX();
+  // repair drones: heal and weld away dents
+  const dr = g.drones;
+  if (dr.t > 0) {
+    dr.t -= dt;
+    if (g.health < g.startHealth) g.health = Math.min(g.startHealth, g.health + 1.2 * dt);   // heals up to full, never above
+    dr.fixT -= dt;
+    for (let i = 0; i < dr.list.length; i++) {
+      const d = dr.list[i], m = g.hullMarks[i % Math.max(1, g.hullMarks.length)];
+      const ty = m ? m.y : (i ? -60 : 60) + Math.sin(g.t + i * 3) * 30;
+      d.y = lerp(d.y, ty, 1 - Math.pow(0.05, dt)); d.x = lane + 7 + Math.sin(g.t * 3 + d.ph) * 2; d.ph += dt;
+      if (m && Math.abs(d.y - m.y) < 4 && Math.random() < dt * 12) g.parts.push(newPart({ k: 'spark', x: lane + 1, y: m.y + rnd(-3, 3), vx: rnd(10, 90), vy: rnd(-70, 70), life: 0.18, max: 0.18, col: '#bffcff' }));
+    }
+    if (dr.fixT <= 0 && g.hullMarks.length) { dr.fixT = 1.5; g.hullMarks.shift(); if (++g.dentsFixed >= 10) unlock('patchup'); SFX.weld(); }
+    if (dr.t <= 0) dr.list = [];
+  }
+  if (g.tractor > 0) g.tractor -= dt;
+  // missile pods: one homing missile at a time from alternating pods
+  const pd = g.pods;
+  if (pd.t > 0) {
+    pd.t -= dt; pd.cd -= dt;
+    if (pd.cd <= 0 && g.enemies.length) {
+      pd.cd = 0.9; pd.side = -pd.side;
+      const y = pd.side * 62;
+      g.missiles.push({ x: lane + 4, y, a: pd.side * 0.5, sp: 90 * SPD(), life: 4, trail: 0 });
+      SFX.missile();
+    }
+  }
+  for (const m of g.missiles) {
+    m.life -= dt; m.sp = Math.min(280 * SPD(), m.sp + 300 * dt);
+    let tgt = null, bd = 1e9;
+    for (const e of g.enemies) { if (e.dead || phasedOut(e)) continue; const d = Math.hypot(e.x - m.x, e.y - m.y); if (d < bd) { bd = d; tgt = e; } }
+    if (tgt) { let want = Math.atan2(tgt.y - m.y, tgt.x - m.x), d = want - m.a; while (d > Math.PI) d -= TAU; while (d < -Math.PI) d += TAU; m.a += clamp(d, -4 * dt, 4 * dt); }
+    m.x += Math.cos(m.a) * m.sp * dt; m.y += Math.sin(m.a) * m.sp * dt;
+    m.trail -= dt;
+    if (m.trail <= 0) { m.trail = 0.03; g.parts.push(newPart({ k: 'smoke', x: m.x, y: m.y, vx: rnd(-6, 6), vy: rnd(-6, 6), life: 0.5, max: 2, sz: 2 })); }
+    let boom = m.life <= 0 || Math.abs(m.y) > WH / 2 + 10 || m.x > WW / 2 + 20;
+    if (!boom) for (const e of g.enemies) { if (e.dead || phasedOut(e)) continue; const h = half(e); if (Math.abs(e.x - m.x) < h + 3 && Math.abs(e.y - m.y) < h + 3) { boom = true; break; } }
+    if (boom) {
+      m.dead = true;
+      const r = 24;
+      for (const e of g.enemies) { if (e.dead) continue; const h = half(e), nx = clamp(m.x, e.x - h, e.x + h), ny = clamp(m.y, e.y - h, e.y + h); if ((nx - m.x) ** 2 + (ny - m.y) ** 2 <= r * r) hurtEnemy(g, e, hitDamage(g) * T.missileDmg, 'missile'); }
+      for (const rk of g.rocks) if (Math.hypot(rk.x - m.x, rk.y - m.y) < r + rk.r) hitRock(g, rk, hitDamage(g) * T.missileDmg);
+      g.rings.push({ x: m.x, y: m.y, r: 4, vr: 200, life: 0.25, max: 0.25, col: '#ff9300', lw: 3 });
+      g.explosions.push({ x: m.x - 10, y: m.y, size: 90, t: 0.16, max: 0.16, done: true });
+      SFX.boom();
+    }
+  }
+  compact(g.missiles, m => !m.dead);
+  // shield generator: slowly recharges shields up to its level
+  const sg = lv('shieldgen');
+  if (sg && g.shield < Math.min(sg, g.shieldMax)) { g.shieldRegen += dt; if (g.shieldRegen >= 60 - 10 * sg) { g.shieldRegen = 0; g.shield++; SFX.shield(); } }
+  else g.shieldRegen = 0;
+}
+
+// ---- asteroids (Asteroid Field sector) ----
+function hitRock(g, rk, dmg) {
+  rk.hp -= dmg; rk.flash = 0.08;
+  if (rk.hp <= 0 && !rk.dead) {
+    rk.dead = true; g.gold += 2 * g.goldMul;
+    if (++g.rocksShot >= 20) unlock('rocks20');
+    burst(g, rk.x, rk.y, '#9a8470', 10 + rk.r | 0, 0.8, false);
+    if (Math.random() < 0.5) dropCoin(g, rk.x, rk.y, 3);
+    SFX.rock();
+  }
+}
+function stepRocks(g, dt) {
+  const sec = sectorOf(g);
+  if (sec.id === 'rocks') {
+    g.rockCd -= dt;
+    if (g.rockCd <= 0) {
+      g.rockCd = rnd(1.4, 2.8) / (1 + 0.1 * hard(g));
+      const r = rnd(7, 16);
+      g.rocks.push({ x: WW / 2 + r + 4, y: rnd(-160, 160), r, vx: -rnd(34, 58) * SPD() * (1 + T.hSpeed * hard(g)), vy: rnd(-8, 8), rot: rnd(0, TAU), vr: rnd(-1.5, 1.5), hp: hitDamage(g) * r / 4, shape: srand(0, 3), flash: 0 });
+    }
+  }
+  const lane = laneX();
+  for (const rk of g.rocks) {
+    rk.x += rk.vx * dt * g.slow; rk.y = clamp(rk.y + rk.vy * dt, -170, 170); rk.rot += rk.vr * dt; rk.flash = Math.max(0, rk.flash - dt);
+    if (rk.x - rk.r * 0.6 < lane) {
+      rk.dead = true;
+      hurtCannon(g, Math.ceil(rk.r * T.rockDmg * (1 + T.hLeak * hard(g))), lane, rk.y);
+      burst(g, lane + 4, rk.y, '#9a8470', 12, 0.8, false);
+      g.wallHit = { y: rk.y, t: 0.5 };
+    }
+  }
+  compact(g.rocks, rk => !rk.dead && rk.x > -WW / 2 - 40);
+}
+
+// ---- the enemy mothership: docks on the right, 2 turrets shield its core, hangars launch squares ----
+function spawnMother(g) {
+  const hp = T.bossSize * 0.82 * growth(g.t) * (1 + 0.15 * g.bossNum) * T.motherHp;
+  const dockX = WW / 2 - 26;
+  const e = { type: 'boss', mother: true, boss: MOTHER, fixed: true, x: WW / 2 + 170, y: 0, dockX, size: 90, max: 90, killAt: 0, base: 22.05, hp, hpMax: hp,
+    gold: 90 + 20 * g.motherNum, armor: 1, vy: 0, flash: 0, t: 0, rot: 0, wob: 0, fireCd: 3, spawnCd: 4, cannonCd: 12, turrets: [], docked: 0 };
+  for (const oy of [112, -112]) {
+    const tu = { type: 'mturret', fixed: true, x: e.x - 14, y: oy, size: 75, max: 75, base: 12.025, hp: hp * 0.22, hpMax: hp * 0.22, armor: 0.6, gold: 10,
+      flash: 0, t: 0, rot: 0, wob: 0, phase: 0, healCd: 1e9, fireCd: rnd(1.5, 2.5), ang: Math.PI, vy: 0, speed: 0 };
+    e.turrets.push(tu); g.enemies.push(tu);
+  }
+  g.enemies.push(e);
+  g.motherNum++;
+  g.boss = e; g.nextBoss = Infinity; g.bossBanner = 3;
+  setMusic('boss'); SFX.horn(); addTrauma(g, 0.4);
+}
+function updateMother(g, e, dt) {
+  if (e.x > e.dockX) { e.x = Math.max(e.dockX, e.x - 70 * SPD() * dt); if (e.x === e.dockX) { addTrauma(g, 0.6); SFX.dock(); } }
+  else e.docked += dt;
+  for (const tu of e.turrets) tu.x = e.x - 14;
+  if (e.x > e.dockX + 1) return;
+  const hk = 1 + T.hFire * hard(g);
+  e.spawnCd -= dt;
+  if (e.spawnCd <= 0) {                   // hangar doors launch squares
+    e.spawnCd = 4.2 / hk; e.hangar = 0.6;
+    for (const s of [-1, 1]) { const c = makeEnemy(g, 'square', e.x - 30, s * 55, srand(90, 120) * growth(g.t)); c.vy = s * 20; }
+  }
+  e.hangar = Math.max(0, (e.hangar || 0) - dt);
+  e.cannonCd -= dt;
+  if (e.docked > 20 && e.cannonCd <= 0) {  // main cannon: a big slow orb aimed at you
+    e.cannonCd = 8 / hk;
+    const sx = e.x - 26, a = Math.atan2(g.y, cannonX() - sx), sp = 75 * SPD();
+    g.ebullets.push({ x: sx, y: 0, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, t: 0, big: true, dmg: 16 });
+    SFX.bigShot(); addTrauma(g, 0.2);
+  }
+}
+function updateMTurret(g, e, dt) {
+  e.ang = Math.atan2(g.y - e.y, cannonX() - e.x);
+  const m = g.boss;
+  if (!m || !m.mother || m.x > m.dockX + 1) return;
+  e.fireCd -= dt;
+  if (e.fireCd <= 0) { e.fireCd = 2.6 / (1 + T.hFire * hard(g)); enemyShoot(g, e, 0); }
+}
+
 function rollRarity(g, minR) {
   const luck = lv('lucky') + (mod(g, 'lucky') ? 5 : 0);
   const r = Math.random();
@@ -886,6 +1071,9 @@ function giveCard(g, quiet, minR = 0) {
   if (type === 17) g.slow = 0.85;
   if (type === 18) { g.golden = 1; g.goldMul *= 2; }
   if (type === 19) deployAI(g);
+  if (type === 20) { if (g.drones.t <= 0) g.drones.list = [{ x: laneX() + 4, y: 60, ph: 0 }, { x: laneX() + 4, y: -60, ph: 3 }]; g.drones.t = Math.min(g.drones.t + 15, 30); SFX.drones(); }
+  if (type === 21) { if (g.tractor <= 0) g.tractorCoins = 0; g.tractor = Math.min(g.tractor + 25, 45); SFX.tractor(); }
+  if (type === 22) { g.pods.t = Math.min(g.pods.t + 18, 36); SFX.pods(); }
   if (CARDS[type].r === 2) { g.legends++; unlock('legend'); }
   g.cardsGot++;
   if (g.cardsGot >= 10) unlock('cards10');
@@ -965,6 +1153,7 @@ function stepGame(dt) {
     if (b.tick <= 0) {
       b.tick += 1 / 30;
       const dmg = hitDamage(g) * T.beamDmg;
+      for (const rk of g.rocks) if (!rk.dead && beamHits(g, { x: rk.x, y: rk.y, base: rk.r, size: 100 })) hitRock(g, rk, dmg);
       for (const e of g.enemies) if (!e.dead && beamHits(g, e)) {
         hurtEnemy(g, e, dmg, 'beam');
         if (Math.random() < 0.3) g.parts.push({ k: 'spark', x: e.x - half(e), y: e.y + rnd(-half(e), half(e)), vx: rnd(40, 200), vy: rnd(-120, 120), life: 0.25, max: 0.25, col: '#bffcff' });
@@ -991,15 +1180,18 @@ function stepGame(dt) {
         const nx = clamp(ox, e.x - h, e.x + h), ny = clamp(oy, e.y - h, e.y + h);
         const near = Math.hypot(nx - ox, ny - oy);
         const far = Math.hypot(Math.max(Math.abs(e.x - h - ox), Math.abs(e.x + h - ox)), Math.max(Math.abs(e.y - h - oy), Math.abs(e.y + h - oy)));
-        if (near <= r + 7 && far >= r - 7) { hurtEnemy(g, e, hitDamage(g) * T.shockDmg * g.shockPow * (1 + 0.25 * lv('shockamp')), 'shock'); if (!e.boss) e.x += 2.5 * SPD(); }
+        if (near <= r + 7 && far >= r - 7) { hurtEnemy(g, e, hitDamage(g) * T.shockDmg * g.shockPow * (1 + 0.25 * lv('shockamp')), 'shock'); if (!e.boss && !e.fixed) e.x += 2.5 * SPD(); }
       }
       g.ebullets = g.ebullets.filter(eb => Math.hypot(eb.x - ox, eb.y - oy) > r + 6);
+      for (const rk of g.rocks) if (!rk.dead && Math.abs(Math.hypot(rk.x - ox, rk.y - oy) - r) < rk.r + 7) hitRock(g, rk, hitDamage(g) * T.shockDmg * 2);
     }
     if (s.t <= 0) { s.st = 'cool'; s.t = T.shockCool; }
   } else if (s.st === 'cool') { s.t -= dt; if (s.t <= 0) s.st = 'idle'; }
 
-  // --- AI turrets ---
+  // --- AI turrets, gadgets, asteroids ---
   stepAI(g, dt);
+  stepGadgets(g, dt);
+  stepRocks(g, dt);
 
   // --- bosses ---
   if (!g.boss && g.t >= g.nextBoss - 3 && !g.bossWarn) { g.bossWarn = 3; SFX.siren(); }
@@ -1071,6 +1263,22 @@ function stepGame(dt) {
     }
   }
   g.qid = qid;
+  // bullets that hit asteroids (piercer goes through)
+  if (g.rocks.length) for (const bl of g.bullets) {
+    if (bl.dead) continue;
+    for (const rk of g.rocks) {
+      if (rk.dead) continue;
+      const nx = clamp(rk.x, Math.min(bl.px, bl.x), bl.x + 6), ny = clamp(rk.y, Math.min(bl.py, bl.y) - 3, Math.max(bl.py, bl.y) + 3);
+      if ((nx - rk.x) ** 2 + (ny - rk.y) ** 2 > rk.r * rk.r || (bl.rocks && bl.rocks.has(rk))) continue;
+      hitRock(g, rk, hitDamage(g) * (bl.kind === 'piercer' ? 2.5 : bl.kind === 'ai' ? T.aiDmg : 1));
+      g.parts.push(newPart({ k: 'spark', x: nx, y: ny, vx: rnd(-120, -30), vy: rnd(-80, 80), life: 0.14, max: 0.14, col: '#e8d2b8' }));
+      if (bl.kind === 'piercer') { (bl.rocks || (bl.rocks = new Set())).add(rk); } else { bl.dead = true; break; }
+    }
+  }
+  // bullets that reach the docked mothership's hull are stopped by its armour
+  const ms = g.boss && g.boss.mother ? g.boss : null;
+  if (ms) for (const bl of g.bullets) if (!bl.dead && bl.x > ms.x - 4) { bl.dead = true; if (Math.random() < 0.5) g.parts.push(newPart({ k: 'spark', x: ms.x - 4, y: bl.y, vx: rnd(-120, -40), vy: rnd(-60, 60), life: 0.12, max: 0.12, col: '#ffb070' })); }
+  compact(g.bullets, b2 => !b2.dead);
   compact(g.bullets, b2 => !b2.dead);
 
   // --- splash explosions: one hit to everything inside ---
@@ -1103,7 +1311,9 @@ function stepGame(dt) {
       }
     }
     if (e.healed) e.healed = Math.max(0, e.healed - dt);
-    if (e.boss) updateBoss(g, e, edt);
+    if (e.mother) updateMother(g, e, edt);
+    else if (e.type === 'mturret') updateMTurret(g, e, edt);
+    else if (e.boss) updateBoss(g, e, edt);
     else if (e.type === 'shooter') updateShooter(g, e, edt);
     else {
       if (e.type === 'swarm') e.vy += Math.sin(e.t * 4 + e.wob) * 60 * edt;
@@ -1112,7 +1322,7 @@ function stepGame(dt) {
       if (e.type === 'dasher') e.rot = Math.sin(e.t * 9) * 0.06;
     }
     const lane = laneX();
-    if (e.boss ? e.x - half(e) * 0.8 < lane : e.x < lane) {
+    if (!e.fixed && (e.boss ? e.x - half(e) * 0.8 < lane : e.x < lane)) {
       e.dead = true;
       const col = enemyColor(e);
       if (e.boss) { hurtCannon(g, 45, lane, e.y); burst(g, lane + 10, e.y, col, 40, 2, true); g.boss = null; g.nextBoss = g.t + bossGap(g); setMusic('game'); }
@@ -1127,7 +1337,7 @@ function stepGame(dt) {
   // --- enemy bullets ---
   for (const eb of g.ebullets) {
     eb.x += eb.vx * dt; eb.y += eb.vy * dt; eb.t += dt;
-    if (eb.x < cx + 16 && eb.x > cx - 16 && Math.abs(eb.y - g.y) < 13) { eb.dead = true; hurtCannon(g, 6 * (1 + T.hLeak * hard(g) * 0.5), eb.x, eb.y); }
+    if (eb.x < cx + 16 && eb.x > cx - 16 && Math.abs(eb.y - g.y) < (eb.big ? 18 : 13)) { eb.dead = true; hurtCannon(g, (eb.dmg || 6) * (1 + T.hLeak * hard(g) * 0.5), eb.x, eb.y); }
     if (eb.x < -WW / 2 - 20 || Math.abs(eb.y) > WH / 2 + 20) eb.dead = true;
   }
   g.ebullets = g.ebullets.filter(e => !e.dead);
@@ -1136,7 +1346,7 @@ function stepGame(dt) {
   for (const c of g.coins) {
     c.t += dt;
     const dx = cx - c.x, dy = g.y - c.y, d = Math.hypot(dx, dy) || 0.001;
-    if (d < coinRange() || c.pull) { c.pull = true; c.vx = lerp(c.vx, dx / d * 260, 1 - Math.pow(0.001, dt)); c.vy = lerp(c.vy, dy / d * 260, 1 - Math.pow(0.001, dt)); }
+    if (d < coinRange(g) || c.pull) { if (!c.pull && g.tractor > 0 && ++g.tractorCoins >= 20) unlock('tractor20'); c.pull = true; c.vx = lerp(c.vx, dx / d * 260, 1 - Math.pow(0.001, dt)); c.vy = lerp(c.vy, dy / d * 260, 1 - Math.pow(0.001, dt)); }
     else { c.vx = lerp(c.vx, -35 * SPD(), 1 - Math.pow(0.3, dt)); c.vy *= Math.pow(0.3, dt); }
     c.x += c.vx * dt; c.y = clamp(c.y + c.vy * dt, -145, 140);
     if (d < 12) { c.dead = true; g.gold += c.val * g.goldMul; g.coinsGot++; SFX.coin(); g.popups.push({ x: cx + 20, y: g.y + 10, val: Math.floor(c.val * g.goldMul) || 1, t: 0.6, col: '#ffd43b', gold: true }); if (g.coinsGot >= 50) unlock('coin50'); }
@@ -1148,6 +1358,11 @@ function stepGame(dt) {
   const wave = 1 + Math.floor(g.t / 30);
   if (wave > g.wave) {
     g.wave = wave; g.waveBanner = 2;
+    if ((wave - 1) % 5 === 0) {           // into the next sector
+      const sec = sectorOf(g); g.sectorBanner = 3.5; SFX.sector();
+      if (sec.id === 'rocks') unlock('sector2');
+      if (sec.id === 'mother') unlock('sector4');
+    }
     if (wave % 5 === 0) {
       g.milestone = 3; g.gold += 10 * wave * g.goldMul; giveCard(g, false, 1); SFX.milestone();
       g.popups.push({ x: 0, y: 40, val: 'MILESTONE  +' + Math.floor(10 * wave * g.goldMul) + ' GOLD', t: 1.6, col: '#ffd43b' });
@@ -1200,7 +1415,7 @@ function stepGame(dt) {
 }
 
 function separate(g, dt) {
-  const list = g.enemies.filter(e => !e.boss).sort((a, b) => a.x - b.x);
+  const list = g.enemies.filter(e => !e.boss && !e.fixed).sort((a, b) => a.x - b.x);
   const k = Math.min(1, dt * 10);
   let maxH = 0; for (const e of list) maxH = Math.max(maxH, half(e));
   for (let i = 0; i < list.length; i++) {
@@ -1326,6 +1541,9 @@ function stepFx(g, dt) {
   g.flash = Math.max(0, g.flash - dt);
   g.bossBanner = Math.max(0, g.bossBanner - dt);
   g.waveBanner = Math.max(0, (g.waveBanner || 0) - dt);
+  g.sectorBanner = Math.max(0, (g.sectorBanner || 0) - dt);
+  g.nebFlash = Math.max(0, (g.nebFlash || 0) - dt);
+  if (g.wave && sectorOf(g).id === 'nebula') { g.nebT -= dt; if (g.nebT <= 0) { g.nebT = rnd(4, 9); g.nebFlash = 0.35; SFX.thunder(); } }
   g.xpFull = Math.max(0, (g.xpFull || 0) - dt);
   if (g.bossFade) g.bossFade.t -= dt;
   g.milestone = Math.max(0, (g.milestone || 0) - dt);
@@ -1810,7 +2028,94 @@ function drawBoss(e, h, t) {
   rr(ctx, -h * 0.4, h * 0.3, h * 0.8, h * 0.16, h * 0.05); ctx.fillStyle = '#06070d'; ctx.fill();
 }
 
+let FOG = null;
+function fogSprite() {
+  if (FOG) return FOG;
+  const c = mkCanvas(256, 64), x = c.getContext('2d');
+  const gr = x.createLinearGradient(0, 0, 256, 0);
+  gr.addColorStop(0, 'rgba(42,10,74,0)'); gr.addColorStop(0.35, 'rgba(48,12,82,0.55)'); gr.addColorStop(1, 'rgba(58,16,96,0.86)');
+  x.fillStyle = gr; x.fillRect(0, 0, 256, 64);
+  for (let i = 0; i < 40; i++) { x.fillStyle = `rgba(150,90,220,${(0.04 + Math.random() * 0.06).toFixed(3)})`; x.beginPath(); x.arc(60 + Math.random() * 196, Math.random() * 64, 4 + Math.random() * 12, 0, TAU); x.fill(); }
+  return (FOG = c);
+}
+const ROCKSPR = [];
+function rockSprite(shape) {
+  if (ROCKSPR[shape]) return ROCKSPR[shape];
+  const RES = 8, S = 40, c = mkCanvas(S * RES, S * RES), x = c.getContext('2d');
+  x.scale(RES, RES); x.translate(S / 2, S / 2);
+  let seed = 31 + shape * 97; const r2 = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  x.beginPath();
+  for (let i = 0; i < 11; i++) { const a = i * TAU / 11, r = 16 * (0.75 + r2() * 0.3); x.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+  x.closePath();
+  const gr = x.createRadialGradient(-5, -5, 2, 0, 0, 18); gr.addColorStop(0, '#a08b76'); gr.addColorStop(0.6, '#6b5b4d'); gr.addColorStop(1, '#3a3029');
+  x.fillStyle = gr; x.fill(); x.lineWidth = 1.6; x.strokeStyle = '#140f0b'; x.stroke();
+  for (let i = 0; i < 4; i++) { const cx = (r2() - 0.5) * 18, cy = (r2() - 0.5) * 18, cr = 1.5 + r2() * 2.8; x.beginPath(); x.arc(cx, cy, cr, 0, TAU); x.fillStyle = 'rgba(30,22,16,0.55)'; x.fill(); x.beginPath(); x.arc(cx - 0.4, cy - 0.4, cr * 0.7, Math.PI, Math.PI * 1.6); x.strokeStyle = 'rgba(200,180,150,0.35)'; x.lineWidth = 0.6; x.stroke(); }
+  return (ROCKSPR[shape] = c);
+}
+function drawRocks(g) {
+  if (!g.rocks.length) return;
+  for (const rk of g.rocks) {
+    worldRot(rk.x, -rk.y, rk.rot, rk.r / 16);
+    ctx.drawImage(rockSprite(rk.shape), -20, -20, 40, 40);
+    if (rk.flash > 0) { ctx.globalAlpha = rk.flash / 0.08 * 0.6; ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(rockSprite(rk.shape), -20, -20, 40, 40); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; }
+  }
+  resetWorld();
+}
+// the enemy mothership hull (cached), mirrored from our own hull but in enemy colours with his square windows
+let MOTHERSPR = null;
+function motherSprite() {
+  const W = 120, H = WH + 8, res = Math.max(2, K * DPR), key = H.toFixed(1) + '@' + res.toFixed(2);
+  if (MOTHERSPR && MOTHERSPR.key === key) return MOTHERSPR;
+  const c = mkCanvas(W * res, H * res), x = c.getContext('2d'); x.scale(res, res);
+  const bg = x.createLinearGradient(0, 0, W, 0); bg.addColorStop(0, '#5a2230'); bg.addColorStop(0.15, '#33141d'); bg.addColorStop(1, '#12070b');
+  x.fillStyle = bg; x.fillRect(0, 0, W, H);
+  let seed = 11; const r2 = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let y = 0; y < H;) { const ph = 20 + r2() * 30; x.fillStyle = 'rgba(0,0,0,0.5)'; x.fillRect(0, y, W, 0.9); x.fillStyle = 'rgba(255,120,120,0.07)'; x.fillRect(0, y + 0.9, W, 0.4); y += ph; }
+  // little square windows in his eight colours
+  for (let i = 0; i < 70; i++) { const wx = 14 + r2() * (W - 20), wy = 6 + r2() * (H - 12); x.fillStyle = SQ_COLORS[i % 8]; x.globalAlpha = 0.25 + r2() * 0.35; x.fillRect(wx, wy, 2.4, 2.4); }
+  x.globalAlpha = 1;
+  // hangar doors at +-55
+  for (const hy of [55, -55]) { const cy = H / 2 - hy; x.fillStyle = '#08030a'; x.fillRect(0, cy - 9, 16, 18); x.fillStyle = '#ffd43b'; for (let i = 0; i < 4; i++) x.fillRect(16, cy - 9 + i * 5, 2, 2.5); }
+  // armoured front edge
+  const eg = x.createLinearGradient(0, 0, 6, 0); eg.addColorStop(0, '#a04050'); eg.addColorStop(1, '#4a1a26'); x.fillStyle = eg; x.fillRect(0, 0, 5, H);
+  MOTHERSPR = { c, key, w: W, h: H };
+  return MOTHERSPR;
+}
+function drawMother(e, g) {
+  const M = motherSprite(), hx = e.x - 4, t = ui.t;
+  ctx.drawImage(M.c, hx, -WH / 2 - 4, M.w, M.h);
+  // hangar door glow while launching
+  if (e.hangar > 0) { glowOn(); for (const hy of [55, -55]) glowAt('#ff9300', hx + 6, -hy, 22, e.hangar / 0.6); glowOff(); }
+  // red running lights
+  for (let i = 0; i < 9; i++) { if ((Math.floor(t * 2 + i * 0.5) % 3) === 0) continue; const ly = -WH / 2 + 20 + i * (WH - 40) / 8; ctx.fillStyle = '#ff3548'; ctx.fillRect(hx + 9, ly, 1.8, 1.8); }
+  // reactor core (the weak spot) and its shield bubble
+  const shielded = e.turrets.some(o => !o.dead), pulse = 0.7 + 0.3 * Math.sin(t * 6);
+  glowOn(); glowAt('#ff3548', e.x, 0, 34, 0.6 * pulse); glowAt('#ffd0d0', e.x, 0, 12, 0.8); glowOff();
+  ctx.beginPath(); ctx.arc(e.x, 0, 12, 0, TAU); ctx.fillStyle = '#3a0d14'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#06070d'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(e.x, 0, 7 * pulse, 0, TAU); ctx.fillStyle = '#ff5a6a'; ctx.fill();
+  if (e.flash > 0) { ctx.globalAlpha = e.flash / 0.08 * 0.7; ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(e.x, 0, 12, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
+  if (shielded) {
+    ctx.strokeStyle = `rgba(255,140,90,${(0.45 + 0.2 * Math.sin(t * 8)).toFixed(3)})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, 0, 22, 0, TAU); ctx.stroke();
+    ctx.lineWidth = 0.8; ctx.beginPath(); for (let i = 0; i < 6; i++) { const a = i * TAU / 6 + t; ctx.moveTo(e.x, 0); ctx.lineTo(e.x + Math.cos(a) * 22, Math.sin(a) * 22); } ctx.stroke();
+  }
+  // main cannon charging glow
+  if (e.docked > 20 && e.cannonCd < 1.5) { glowOn(); glowAt('#ff3548', e.x - 26, 0, 10 + 20 * (1 - e.cannonCd / 1.5), 0.9); glowOff(); }
+}
+function drawMTurret(e, g) {
+  const x = e.x, y = -e.y;
+  ctx.beginPath(); ctx.arc(x + 4, y, 11, Math.PI * 0.5, Math.PI * 1.5, true); ctx.fillStyle = '#5a2230'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#06070d'; ctx.stroke();
+  worldRot(x, y, -e.ang);
+  rr(ctx, 0, -2.6, 15, 5.2, 1); ctx.fillStyle = '#b8c0cc'; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = '#06070d'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, 0, 7, 0, TAU); ctx.fillStyle = '#7a2a3a'; ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#ffd0d0'; ctx.fillRect(-1.5, -1.5, 3, 3);
+  if (e.flash > 0) { ctx.globalAlpha = e.flash / 0.08 * 0.7; ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, 0, 7, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
+  resetWorld();
+  // its HP ring
+  ctx.strokeStyle = '#ff8a95'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(x, y, 10, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(e.hp / e.hpMax, 0, 1)); ctx.stroke();
+}
 function drawEnemy(e, g) {
+  if (e.mother) return drawMother(e, g);
+  if (e.type === 'mturret') return drawMTurret(e, g);
   const h = half(e), x = e.x, y = -e.y, col = enemyColor(e);
   const frac = e.boss ? 0 : 1 - (e.size - killSize(g.D)) / Math.max(1, e.max - killSize(g.D));
   const cracks = frac > 0.66 ? 2 : frac > 0.33 ? 1 : 0;
@@ -1932,8 +2237,11 @@ function drawCardIcon(c, type, s, col) {
     case 16: c.lineWidth = 2.2; c.beginPath(); c.moveTo(-8, -8); c.lineTo(-1, -2); c.lineTo(-4, 1); c.lineTo(4, 8); c.moveTo(4, 8); c.lineTo(3, 3); c.moveTo(4, 8); c.lineTo(-1, 7); c.stroke(); break;
     case 17: c.lineWidth = 1.8; c.beginPath(); c.moveTo(-6, -8); c.lineTo(6, -8); c.lineTo(-6, 8); c.lineTo(6, 8); c.closePath(); c.stroke(); c.beginPath(); c.moveTo(-3, 5.5); c.lineTo(3, 5.5); c.lineTo(0, 1.5); c.fill(); break;
     case 18: c.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * TAU / 10, r = i % 2 ? 3.6 : 8.5; c.lineTo(Math.cos(a) * r, Math.sin(a) * r); } c.closePath(); c.fill(); break;
+    case 20: c.beginPath(); c.arc(0, 0, 3.5, 0, TAU); c.fill(); c.lineWidth = 1.6; c.beginPath(); c.moveTo(-9, -5); c.lineTo(9, -5); c.moveTo(0, -5); c.lineTo(0, -2); c.stroke(); c.fillRect(-1, 3, 2, 5); break;
+    case 21: c.lineWidth = 1.8; c.beginPath(); c.moveTo(-9, -7); c.lineTo(-9, 7); c.stroke(); c.globalAlpha *= 0.5; c.beginPath(); c.moveTo(-8, -2); c.lineTo(8, -8); c.lineTo(8, 8); c.lineTo(-8, 2); c.closePath(); c.fill(); c.globalAlpha *= 2; c.beginPath(); c.arc(5, 0, 2.6, 0, TAU); c.fill(); break;
+    case 22: c.beginPath(); c.moveTo(-8, -2); c.lineTo(5, -2); c.lineTo(9, 0); c.lineTo(5, 2); c.lineTo(-8, 2); c.closePath(); c.fill(); c.beginPath(); c.moveTo(-8, -2); c.lineTo(-10, -5); c.lineTo(-5, -2); c.moveTo(-8, 2); c.lineTo(-10, 5); c.lineTo(-5, 2); c.fill(); break;
     case 19: c.beginPath(); c.arc(-3, 0, 5.5, 0, TAU); c.fill(); c.fillRect(0, -4.2, 10, 2.4); c.fillRect(0, 1.8, 10, 2.4); c.fillStyle = '#ff3548'; c.fillRect(-4.5, -1.2, 2.4, 2.4); break;
-    case 21: c.beginPath(); for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2; c.moveTo(0, 0); c.arc(Math.cos(a) * 4.2, Math.sin(a) * 4.2, 3.8, 0, TAU); } c.fill(); c.lineWidth = 1.6; c.beginPath(); c.moveTo(0, 0); c.lineTo(3, 9); c.stroke(); break;
+    case 99: c.beginPath(); for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2; c.moveTo(0, 0); c.arc(Math.cos(a) * 4.2, Math.sin(a) * 4.2, 3.8, 0, TAU); } c.fill(); c.lineWidth = 1.6; c.beginPath(); c.moveTo(0, 0); c.lineTo(3, 9); c.stroke(); break;
   }
   c.restore();
 }
@@ -1968,7 +2276,8 @@ function drawCard(c, type, w, a) {
 let HULLSPR = null;
 function hullSprite() {
   const L = -WW / 2, x1 = laneX() + 2, W = x1 - L + 2, H = WH + 8, res = Math.max(2, K * DPR);
-  const key = W.toFixed(1) + 'x' + H.toFixed(1) + '@' + res.toFixed(2);
+  const ups = ['hull', 'armor', 'bay', 'capacitor', 'coinmag', 'shieldgen', 'crit'].map(lv).join('');
+  const key = W.toFixed(1) + 'x' + H.toFixed(1) + '@' + res.toFixed(2) + ':' + ups;
   if (HULLSPR && HULLSPR.key === key) return HULLSPR;
   const c = mkCanvas(W * res, H * res), x = c.getContext('2d');
   x.scale(res, res);
@@ -2012,9 +2321,38 @@ function hullSprite() {
   // armoured front edge
   const eg = x.createLinearGradient(W - 6, 0, W, 0); eg.addColorStop(0, '#2b3442'); eg.addColorStop(1, '#6a7688');
   x.fillStyle = eg; x.fillRect(W - 6, 0, 4, H);
+  // ---- shipyard upgrades you can see ----
+  const mid = H / 2;
+  // Reactive Armor: hex tiles down the middle strip
+  for (let i = 0; i < lv('armor') * 3; i++) {
+    const hy = mid + ((i % 2 ? 1 : -1) * (40 + Math.floor(i / 2) * 22)), hx = W * 0.62;
+    if (hy < 6 || hy > H - 6) continue;
+    x.beginPath(); for (let k = 0; k < 6; k++) { const a = k * TAU / 6; x.lineTo(hx + Math.cos(a) * 3.2, hy + Math.sin(a) * 3.2); } x.closePath();
+    x.fillStyle = '#4a5466'; x.fill(); x.lineWidth = 0.6; x.strokeStyle = '#0a0d13'; x.stroke();
+  }
+  // Hull Plating: extra armour plates bolted to the front edge
+  const np = lv('hull');
+  for (let i = 0; i < np; i++) {
+    const py = (i + 0.5) * H / np - 11;
+    const pg = x.createLinearGradient(W - 9, 0, W - 3, 0); pg.addColorStop(0, '#3a4556'); pg.addColorStop(1, '#7a8698');
+    x.fillStyle = pg; x.fillRect(W - 9, py, 6, 22);
+    x.fillStyle = 'rgba(255,255,255,0.18)'; x.fillRect(W - 9, py, 6, 0.8);
+    x.fillStyle = '#1a2029'; x.beginPath(); x.arc(W - 6, py + 4, 0.7, 0, TAU); x.arc(W - 6, py + 18, 0.7, 0, TAU); x.fill();
+  }
+  // Turret Bay: lit yellow frames around the hardpoints
+  if (lv('bay')) for (const hy of [118, 0, -118]) { x.lineWidth = 0.8 + 0.3 * lv('bay'); x.strokeStyle = '#ffd43b'; x.beginPath(); x.arc(aiX() - L, H / 2 - hy, 8.6, 0, TAU); x.stroke(); }
+  // Beam Capacitor: copper coils next to the rail
+  for (let i = 0; i < lv('capacitor'); i++) { const cy = mid - 30 + i * 20; x.fillStyle = '#c87533'; for (let k = 0; k < 4; k++) x.fillRect(rx - 4, cy + k * 2.2, 3, 1.3); x.fillStyle = '#3a2410'; x.fillRect(rx - 4.5, cy - 0.6, 4, 0.6); }
+  // Gold Magnet: a dish near the top, bigger with each level
+  if (lv('coinmag')) { const ds = 2.5 + lv('coinmag'); x.fillStyle = '#9aa3ad'; x.beginPath(); x.ellipse(W * 0.6, 26, ds, ds * 0.5, -0.5, 0, TAU); x.fill(); x.strokeStyle = '#0a0d13'; x.lineWidth = 0.6; x.stroke(); x.fillStyle = '#ffd43b'; x.fillRect(W * 0.6 - 0.5, 25.5, 1, 1); }
+  // Shield Generator: domes on the outer strip (they glow when a shield is charged)
+  for (const dy of shieldDomes()) { x.fillStyle = '#1a2230'; x.beginPath(); x.arc(7, H / 2 - dy, 5.2, 0, TAU); x.fill(); const dg = x.createRadialGradient(5.8, H / 2 - dy - 1.4, 0.5, 7, H / 2 - dy, 4.2); dg.addColorStop(0, '#9ee9ff'); dg.addColorStop(1, '#1d4f6a'); x.fillStyle = dg; x.beginPath(); x.arc(7, H / 2 - dy, 4.2, 0, TAU); x.fill(); x.lineWidth = 0.6; x.strokeStyle = '#0a0d13'; x.stroke(); }
+  // Crit Optics: a red targeting lens under the bridge window
+  if (lv('crit')) { x.fillStyle = '#300'; x.beginPath(); x.arc(8, 26, 2.4, 0, TAU); x.fill(); x.fillStyle = '#ff3548'; x.beginPath(); x.arc(8, 26, 1.2 + 0.15 * lv('crit'), 0, TAU); x.fill(); }
   HULLSPR = { c, key, w: W, h: H };
   return HULLSPR;
 }
+function shieldDomes() { return [60, -60, 160].slice(0, lv('shieldgen')); }
 const SCORCH = {};
 function scorchSprite() {
   if (SCORCH.c) return SCORCH.c;
@@ -2064,7 +2402,42 @@ function drawWall(g) {
   ctx.fillStyle = rgba(edge, Math.min(1, 0.25 * pulse + hurt)); ctx.fillRect(lane - 1, -WH / 2, 5, WH);
   ctx.fillStyle = rgba(edge, Math.min(1, 0.8 * pulse + hurt)); ctx.fillRect(lane, -WH / 2, 1.5, WH);
   if (g && g.wallHit) drawGlow('#ff3548', lane, -g.wallHit.y, 40, g.wallHit.t * 2);
-  if (g) drawAITurrets(g);
+  if (g) {
+    glowOn();
+    shieldDomes().forEach((dy, i) => { if (g.shield > i) glowAt('#63e2ff', L + 5, -dy, 10, 0.55 + 0.2 * Math.sin(t * 3 + i)); });
+    if (lv('capacitor') && g.beam.st === 'idle') glowAt('#00fffa', cannonX() - 8, 0, 14 + 3 * lv('capacitor'), 0.25 + 0.1 * Math.sin(t * 5));
+    glowOff();
+    drawGadgets(g);
+    drawAITurrets(g);
+  }
+}
+function drawGadgets(g) {
+  const lane = laneX();
+  // missile pods on the hull while active
+  if (g.pods.t > 0) for (const s2 of [1, -1]) { rr(ctx, lane - 3, -s2 * 62 - 6, 7, 12, 1.5); ctx.fillStyle = '#4a5466'; ctx.fill(); ctx.lineWidth = 0.8; ctx.strokeStyle = '#06070d'; ctx.stroke(); ctx.fillStyle = '#ff9300'; ctx.fillRect(lane + 2, -s2 * 62 - 4, 1.5, 8); }
+  // missiles: smoke is in the particles; the body is a small rotated shape
+  for (const m of g.missiles) {
+    worldRot(m.x, -m.y, -m.a);
+    ctx.fillStyle = '#e8edf2'; ctx.fillRect(-5, -1.3, 8, 2.6); ctx.fillStyle = '#ff3548'; ctx.beginPath(); ctx.moveTo(3, -1.3); ctx.lineTo(6, 0); ctx.lineTo(3, 1.3); ctx.fill();
+    ctx.fillStyle = '#8a929c'; ctx.beginPath(); ctx.moveTo(-5, -1.3); ctx.lineTo(-7, -3.2); ctx.lineTo(-3, -1.3); ctx.moveTo(-5, 1.3); ctx.lineTo(-7, 3.2); ctx.lineTo(-3, 1.3); ctx.fill();
+  }
+  resetWorld();
+  if (g.missiles.length) { glowOn(); for (const m of g.missiles) glowAt('#ff9300', m.x - Math.cos(m.a) * 6, -m.y + Math.sin(m.a) * 6, 6, 0.9); glowOff(); }
+  // repair drones: little hovering bots with a rotor glow and a welding arm
+  for (const d of g.drones.list) {
+    const y = -d.y;
+    rr(ctx, d.x - 3.5, y - 2.5, 7, 5, 1.6); ctx.fillStyle = '#d5dbe2'; ctx.fill(); ctx.lineWidth = 0.7; ctx.strokeStyle = '#06070d'; ctx.stroke();
+    ctx.fillStyle = '#63e2ff'; ctx.fillRect(d.x - 1, y - 1, 2, 2);
+    ctx.strokeStyle = '#8a929c'; ctx.beginPath(); ctx.moveTo(d.x - 3.5, y + 1); ctx.lineTo(lane + 1, y + 2); ctx.stroke();
+  }
+  if (g.drones.list.length) { glowOn(); for (const d of g.drones.list) { glowAt('#63e2ff', d.x, -d.y - 3, 5, 0.6 + 0.3 * Math.sin(ui.t * 30 + d.ph)); } glowOff(); }
+  // tractor beam: faint lines to the coins being pulled in
+  if (g.tractor > 0 && g.coins.length) {
+    const cx = cannonX();
+    ctx.strokeStyle = `rgba(255,212,59,${(0.18 + 0.08 * Math.sin(ui.t * 10)).toFixed(3)})`; ctx.lineWidth = 1.2; ctx.beginPath();
+    for (const c of g.coins) if (c.pull) { ctx.moveTo(cx, -g.y); ctx.lineTo(c.x, -c.y); }
+    ctx.stroke();
+  }
 }
 // AI turret sprites: base dome + twin-barrel head, drawn rotated without save/restore
 function aiSprites() {
@@ -2149,14 +2522,15 @@ function drawWorld(g) {
 
   // enemies (bosses behind); all their soft glows first, in one additive pass
   if (!Q.low) { glowOn(); for (const e of g.enemies) { const h = half(e); glowAt(enemyColor(e), e.x, -e.y, h * 2.4, phasedOut(e) ? 0.05 : 0.18); } glowOff(); }
+  drawRocks(g);
   for (const e of g.enemies) if (e.boss) drawEnemy(e, g);
   for (const e of g.enemies) if (!e.boss) drawEnemy(e, g);
 
   // enemy bullets
   if (g.ebullets.length) {
-    glowOn(); for (const eb of g.ebullets) glowAt('#ff3040', eb.x, -eb.y, 9, 0.9); glowOff();
+    glowOn(); for (const eb of g.ebullets) glowAt('#ff3040', eb.x, -eb.y, eb.big ? 24 : 9, 0.9); glowOff();
     const ES = ebulletSprite();
-    for (const eb of g.ebullets) { worldRot(eb.x, -eb.y, eb.t * 8); ctx.drawImage(ES.c, -ES.s / 2, -ES.s / 2, ES.s, ES.s); }
+    for (const eb of g.ebullets) { const sc = eb.big ? 2.4 : 1; worldRot(eb.x, -eb.y, eb.t * 8, sc); ctx.drawImage(ES.c, -ES.s / 2, -ES.s / 2, ES.s, ES.s); }
     resetWorld();
   }
 
@@ -2291,6 +2665,12 @@ function drawWorld(g) {
     ctx.fillStyle = p.col; ctx.fillText(txt, p.x, -p.y); ctx.globalAlpha = 1;
   }
 
+  // ion nebula: purple fog that hides squares far away, with lightning flashes
+  if (sectorOf(g).id === 'nebula') {
+    ctx.drawImage(fogSprite(), -WW * 0.12, -WH / 2 - 10, WW * 0.62 + 20, WH + 20);
+    if (g.nebFlash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = g.nebFlash / 0.35 * 0.35; ctx.drawImage(fogSprite(), -WW * 0.12, -WH / 2 - 10, WW * 0.62 + 20, WH + 20); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; }
+  }
+
   // upgrade cards
   for (const c of g.cards) {
     let x = c.x, y = c.y, w = 44, a = 1, sx = 1;
@@ -2371,10 +2751,10 @@ function drawHud(g) {
   const bf = g.bossFade && g.bossFade.t > 0 ? g.bossFade : null;
   if (g.boss || bf) {
     const name = g.boss ? g.boss.boss.name : bf.name, col = g.boss ? g.boss.boss.col : bf.col;
-    const k = g.boss ? clamp((g.boss.size - g.boss.killAt) / (g.boss.max - g.boss.killAt), 0, 1) : 0;
+    const k = g.boss ? clamp(g.boss.hp !== undefined ? g.boss.hp / g.boss.hpMax : (g.boss.size - g.boss.killAt) / (g.boss.max - g.boss.killAt), 0, 1) : 0;
     const bw = Math.min(VW * 0.42, 420 * u), bx = VW / 2 - bw / 2, by = P + 60 * u;   // below the XP bar so they never overlap
     ctx.globalAlpha = g.boss ? 1 : clamp(bf.t / 0.4, 0, 1);
-    txt(g.boss ? name : name + ' DEFEATED', VW / 2, by - 2 * u, 11 * u, shade(col, 0.3), { al: 'center', w: 900, glow: col });
+    txt(g.boss ? name + (g.boss.mother && g.boss.turrets.some(o => !o.dead) ? '  ·  SHIELDED: DESTROY ITS TURRETS' : '') : name + ' DEFEATED', VW / 2, by - 2 * u, 11 * u, shade(col, 0.3), { al: 'center', w: 900, glow: col });
     bar(bx, by + 6 * u, bw, 9 * u, k, col);
     ctx.globalAlpha = 1;
   }
@@ -2383,7 +2763,9 @@ function drawHud(g) {
   const rx = VW - P;
   txt((g.daily ? 'DAILY · ' : DIFFS[g.D].name.toUpperCase() + ' · ') + 'WAVE ' + g.wave, rx, P + 7 * u, 10 * u, g.daily ? '#ffd43b' : '#8fb4d9', { al: 'right' });
   txt(fmtTime(g.t), rx, P + 25 * u, 18 * u, '#ffffff', { al: 'right', w: 900 });
-  if (!g.boss && isFinite(g.nextBoss)) txt('BOSS IN ' + fmtTime(Math.max(0, g.nextBoss - g.t)), rx, P + 44 * u, 8 * u, '#ff8a95', { al: 'right' });
+  if (!g.boss && isFinite(g.nextBoss)) txt((sectorOf(g).id === 'mother' ? 'MOTHERSHIP IN ' : 'BOSS IN ') + fmtTime(Math.max(0, g.nextBoss - g.t)), rx, P + 44 * u, 8 * u, '#ff8a95', { al: 'right' });
+  const sec = sectorOf(g);
+  txt('SECTOR ' + (sectorNum(g) + 1) + ': ' + sec.name, rx, P + 57 * u, 8 * u, sec.col, { al: 'right' });
 
   // bottom left: abilities
   const by2 = VH - P - 12 * u;
@@ -2407,6 +2789,9 @@ function drawHud(g) {
   if (g.pierce) stats.push([5, g.pierce]); if (g.multi) stats.push([6, '+' + g.multi]);
   if (g.beamBonus || g.beamExtra) stats.push([7, '+' + g.beamBonus]); if (g.goldCards || g.golden) stats.push([9, 'x' + g.goldMul.toFixed(2)]);
   if (g.crit) stats.push([11, Math.round(g.crit * 100) + '%']); if (g.shockPow > 1) stats.push([10, 'x' + g.shockPow.toFixed(1)]);
+  if (g.drones.t > 0) stats.push([20, Math.ceil(g.drones.t) + 's']);
+  if (g.tractor > 0) stats.push([21, Math.ceil(g.tractor) + 's']);
+  if (g.pods.t > 0) stats.push([22, Math.ceil(g.pods.t) + 's']);
   if (g.ai.t > 0) stats.push([19, Math.ceil(g.ai.t) + 's' + (g.ai.n > 2 ? ' x3' : '')]);
   if (g.chain) stats.push([16, '']); if (g.slow < 1) stats.push([17, '']); if (g.revives) stats.push([13, 'x' + g.revives]);
   let sx = VW - P, sy = by2;
@@ -2420,6 +2805,13 @@ function drawHud(g) {
     sx -= tw + 30 * u;
   }
 
+  // sector banner
+  if (g.sectorBanner > 0) {
+    const sec = sectorOf(g), a = clamp(g.sectorBanner, 0, 1);
+    txt('ENTERING SECTOR ' + (sectorNum(g) + 1), VW / 2, VH * 0.36, 13 * u, `rgba(207,227,245,${a})`, { al: 'center', w: 700 });
+    ctx.globalAlpha = a; txt(sec.name, VW / 2, VH * 0.36 + 26 * u, 28 * u, sec.col, { al: 'center', w: 900, glow: sec.col, gb: 16 }); ctx.globalAlpha = 1;
+    txt(sec.desc, VW / 2, VH * 0.36 + 52 * u, 12 * u, `rgba(207,227,245,${a})`, { al: 'center', f: F2, w: 700 });
+  }
   // wave + milestone banners
   if (g.waveBanner > 0 && !g.bossWarn) {
     const a = clamp(g.waveBanner, 0, 1);
@@ -2672,7 +3064,7 @@ function drawShopIcon(it, x, y, s) {
   ctx.save(); ctx.translate(x, y);
   drawGlowLocal(ctx, it.col, 0, 0, s * 2.2, 0.35);
   rr(ctx, -s, -s, s * 2, s * 2, s * 0.3); ctx.fillStyle = rgba(it.col, 0.15); ctx.fill(); ctx.lineWidth = 1.2; ctx.strokeStyle = it.col; ctx.stroke();
-  const map = { bay: 19, hull: 3, loader: 1, rounds: 2, capacitor: 7, magnet: 15, rush: 9, head: 0, shockamp: 10, piercore: 5, crit: 11, coinmag: 9, armor: 8, revive: 13, lucky: 21 };
+  const map = { bay: 19, hull: 3, loader: 1, rounds: 2, capacitor: 7, magnet: 15, rush: 9, head: 0, shockamp: 10, piercore: 5, crit: 11, coinmag: 9, armor: 8, revive: 13, lucky: 99, shieldgen: 8 };
   if (it.needs) { ctx.save(); ctx.scale(s / 22, s / 22); ctx.translate(-12, 0); drawCannon(ctx, it.needs, 0, 0.3, ui.t); ctx.restore(); }
   else if (it.id === 'head') { rr(ctx, -s * 0.45, -s * 0.6, s * 0.9, s * 1.2, s * 0.12); ctx.lineWidth = 1.5; ctx.stroke(); ctx.fillStyle = it.col; ctx.fillRect(-s * 0.15, -s * 0.3, s * 0.3, s * 0.6); }
   else drawCardIcon(ctx, map[it.id], s / 11, it.col);
@@ -2785,7 +3177,7 @@ function resize() {
   WW = clamp(VW / K, 480, 960); WH = VH / K;
   if (cv) { cv.width = Math.round(VW * DPR); cv.height = Math.round(VH * DPR); }
   if (ctx) { ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; }
-  HULLSPR = null;
+  HULLSPR = null; MOTHERSPR = null;
 }
 function setQuality(low) { if (Q.low === low) return; Q.low = low; resize(); }
 // called once per real frame with the frame time; drops to low quality if it stays slow (auto mode only)
@@ -2844,7 +3236,7 @@ function boot() {
 }
 
 // hooks for headless testing
-window.SG = { CAPS, Q, setQuality, SHOP, CARDS, BOSSES, giveCard, step, newGame, keys, mouse, onClick, onKeyDown, draw, beamHits, hitDamage, killSize, T, VARIANTS,
+window.SG = { SECTORS, sectorOf, spawnMother, CAPS, Q, setQuality, SHOP, CARDS, BOSSES, giveCard, step, newGame, keys, mouse, onClick, onKeyDown, draw, beamHits, hitDamage, killSize, T, VARIANTS,
   get G() { return G; }, get scene() { return scene; }, set scene(v) { scene = v; }, SAVE: () => SAVE, ui, loadSave, resize,
   boot: () => { loadSave(); makeNebula(); makeStars(); resize(); } };
 if (!window.SG_HEADLESS) boot();
